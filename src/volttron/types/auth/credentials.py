@@ -18,6 +18,9 @@ class Credentials(ABC):
     for authentication.
 
     """
+    @abstractmethod
+    def get_identifier(self) -> str:
+        pass
 
     @abstractmethod
     def get_credentials(self) -> Dict[str, Any]:
@@ -32,14 +35,17 @@ class Credentials(ABC):
 
 class ClientCredentials(Credentials):
 
-    def __init__(self, identity: str, **kwargs) -> None:
-        self.identity = identity
+    def __init__(self, identifier: str, **kwargs) -> None:
+        self._identifier = identifier
 
         for k, v in kwargs.items():
             if not isinstance(k, str):
                 raise ValueError(f"Item {k} is not a string. String are required for keys")
 
         self._credentials = kwargs
+        
+    def get_identifier(self) -> str:
+        return self._identifier
 
     def get_credentials(self) -> Dict[str, Any]:
         return self._credentials

@@ -4,6 +4,10 @@ from typing import Any, Dict
 from .credentials import Credentials
 
 
+class AuthenticationError(Exception):
+    pass
+
+
 class Authentication(ABC):
     """
     Interface for authentication objects.
