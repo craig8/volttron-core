@@ -55,22 +55,24 @@ from volttron.types.parameter import Parameter
 monkey.patch_socket()
 monkey.patch_ssl()
 
-
-from volttron.utils.dynamic_helper import get_all_subclasses
-from volttron.types import (
-    MessageBusInterface,
-    ServiceConfigs,
-    Factories,
-    CredentialsManager,
-    CredentialsGenerator,
-    CredentialsError, ServerOptions, ServerRuntime)
-from volttron.server.aip import AIPplatform
-
-
+from volttron.client.known_identities import (CONTROL, CONTROL_CONNECTION, PLATFORM_WEB)
+from volttron.server import aip
+from volttron.server import server_argparser as config
+from volttron.server.log_actions import (LogLevelAction, configure_logging, log_to_file)
+from volttron.types.credentials import (CredentialsError, CredentialsGenerator, CredentialsManager)
+from volttron.types.factories import Factories
+from volttron.types.message_bus import MessageBusInterface
+from volttron.types.server_options import (ObjectManager, ServerOptions, ServerRuntime)
+# Link to the volttron-client library
 # import gevent.monkey
 # import gevent.threading as threading
 #
-from volttron.utils import ClientContext as cc, get_class, get_subclasses
+from volttron.utils import ClientContext as cc
+from volttron.utils import (get_class, get_subclasses, get_version, store_message_bus_config)
+from volttron.utils.dynamic_helper import get_all_subclasses
+# TODO Keystore is only good for zmq??
+from volttron.utils.persistance import load_create_store
+
 # from volttron.utils.keystore import get_random_key
 #
 # # gevent.monkey.patch_socket()
@@ -78,25 +80,12 @@ from volttron.utils import ClientContext as cc, get_class, get_subclasses
 # import zmq
 # from zmq import green
 
-# Link to the volttron-client library
-from volttron.utils import get_version
-
 # Create a context common to the green and non-green zmq modules.
 # green.Context._instance = green.Context.shadow(zmq.Context.instance().underlying)
 
 # from .vip.router import *
 # from .vip.socket import decode_key, encode_key, Address
 # from .vip.tracking import Tracker
-
-from volttron.client.known_identities import (
-    PLATFORM_WEB,
-    CONTROL,
-    CONTROL_CONNECTION,
-)
-from volttron.utils import store_message_bus_config
-# TODO Keystore is only good for zmq??
-from volttron.utils.persistance import load_create_store
-
 
 # TODO Enable from zmq?
 # from .tracking import Tracker
@@ -125,10 +114,6 @@ from volttron.utils.persistance import load_create_store
 # TODO no proxy routing.
 # from ..services.routing import ZMQProxyRouter
 
-from volttron.server.log_actions import log_to_file, configure_logging, LogLevelAction
-from volttron.server import server_argparser as config, aip
-
-
 _log = logging.getLogger(os.path.basename(sys.argv[0]) if __name__ == "__main__" else __name__)
 
 # Only show debug on the platform when really necessary!
@@ -151,9 +136,10 @@ _log = logging.getLogger(os.path.basename(sys.argv[0]) if __name__ == "__main__"
 # No need for str after python 3.8
 VOLTTRON_INSTANCES = Path("~/.volttron_instances").expanduser().resolve()
 
+os.environ['MESSAGE_BUS'] = ServerOptions.message_bus
+os.environ['AGENT_CORE'] = ServerOptions.agent_core
 
-server_options = ServerOptions()
-server_runtime = ServerRuntime(server_options)
+server_runtime = ServerRuntime
 
 
 def start_volttron_process(runtime: ServerRuntime):
@@ -252,78 +238,93 @@ def start_volttron_process(runtime: ServerRuntime):
         _log.debug("open file resource limit %d to %d", soft, hard)
 
     # Create the root VOLTTRON_HOME and parents if necessary.
-    runtime.options.volttron_home.mkdir(mode=0o777, exist_ok=True, parents=True)
+    # runtime.options.volttron_home.mkdir(mode=0o777, exist_ok=True, parents=True)
 
-    # Retrieve the parameters that are available for the passed message bus.
-    message_bus_params = runtime.message_bus_cls.get_default_parameters()
+    # # Retrieve the parameters that are available for the passed message bus.
+    # message_bus_params = runtime.message_bus_cls.get_default_parameters()
 
-    # Populate the parameters based upon config parameters.
-    print(message_bus_params)
+    # # Populate the parameters based upon config parameters.
+    # print(message_bus_params)
 
-    # Set up the credential store to manage the credentials for agents/services/server.
-    credential_store = Path(runtime.options.volttron_home).joinpath("credential_store")
-    # TODO get from config.
-    # This is using the file based credential store so we pass on the store location.
-    cred_manager = runtime.credential_manager_cls(str(credential_store), "CURVE")
-    cred_generator = runtime.credential_generator_cls()
+    # # Set up the credential store to manage the credentials for agents/services/server.
+    # credential_store = Path(runtime.options.volttron_home).joinpath("credential_store")
+    # # TODO get from config.
+    # # This is using the file based credential store so we pass on the store location.
+    # #cred_manager = runtime.credential_manager_cls(str(credential_store), "CURVE")
+    # #cred_generator = runtime.credential_generator_cls()
+    # cred_manager = None
+    # # Create minimal set of identities that should be in the store in order for the system to work.
+    # # Note all the services will utilize the credentials of the CONTROL identity.
+    # # for identity in (CONTROL, CONTROL_CONNECTION, "server"):
+    # #     try:
+    # #         cred_manager.load(identity)
+    # #     except CredentialsError:
+    # #         creds = cred_generator.generate(identity)
+    # #         cred_manager.store(creds)
 
-    # Create minimal set of identities that should be in the store in order for the system to work.
-    # Note all the services will utilize the credentials of the CONTROL identity.
-    for identity in (CONTROL, CONTROL_CONNECTION, "server"):
-        try:
-            cred_manager.load(identity)
-        except CredentialsError:
-            creds = cred_generator.generate(identity)
-            cred_manager.store(creds)
-
-    server_creds = cred_manager.load("server")
-    service_creds = cred_manager.load(CONTROL)
-
-    aip = AIPplatform(runtime=runtime)
-    aip.setup()
+    # # server_creds = cred_manager.load("server")
+    # # service_creds = cred_manager.load(CONTROL)
+    # server_creds = None
+    # service_creds = None
 
     # TODO see if there is a bus wide way of doing this.
     #  tracker = Tracker()
-    protected_topics_file = os.path.join(server_options.volttron_home, "protected_topics.json")
-    _log.debug("protected topics file %s", protected_topics_file)
-    external_address_file = os.path.join(server_options.volttron_home, "external_address.json")
-    _log.debug("external_address_file file %s", external_address_file)
-    protected_topics = {}
-    # if opts.agent_monitor_frequency:
-    #     try:
-    #         int(opts.agent_monitor_frequency)
-    #     except ValueError as e:
-    #         raise ValueError("agent-monitor-frequency should be integer "
-    #                          "value. Units - seconds. This determines how "
-    #                          "often the platform checks for any crashed agent "
-    #                          "and attempts to restart. {}".format(e))
+    # protected_topics_file = os.path.join(server_options.volttron_home, "protected_topics.json")
+    # _log.debug("protected topics file %s", protected_topics_file)
+    # external_address_file = os.path.join(server_options.volttron_home, "external_address.json")
+    # _log.debug("external_address_file file %s", external_address_file)
+    # protected_topics = {}
+    # # if opts.agent_monitor_frequency:
+    # #     try:
+    # #         int(opts.agent_monitor_frequency)
+    # #     except ValueError as e:
+    # #         raise ValueError("agent-monitor-frequency should be integer "
+    # #                          "value. Units - seconds. This determines how "
+    # #                          "often the platform checks for any crashed agent "
+    # #                          "and attempts to restart. {}".format(e))
 
-    pid_file = os.path.join(server_options.volttron_home, "VOLTTRON_PID")
+    # pid_file = os.path.join(server_options.volttron_home, "VOLTTRON_PID")
 
-    # The return value will be added to the service_config.yml file in order to pass in
-    # the expected defaults. From there the user may choose to modify the defaults.
-    service_config_file = server_options.volttron_home.joinpath("service_config.yml")
-    service_config = ServiceConfigs(service_config_file=service_config_file,
-                                    service_credentials=service_creds,
-                                    server_credentials=server_creds)
+    # # The return value will be added to the service_config.yml file in order to pass in
+    # # the expected defaults. From there the user may choose to modify the defaults.
+    # service_config_file = server_options.volttron_home.joinpath("service_config.yml")
+    # service_config = ServiceConfigs(service_config_file=service_config_file,
+    #                                 service_credentials=service_creds,
+    #                                 server_credentials=server_creds)
     # Start up the platform
     spawned_greenlets = []
 
-    service_config.init_services(aip)
+    has_auth = False
+
+    # Instantiate instances of the Authorization and Authentication classes that can be used
+    # by the AuthService
+    if ServerOptions.authentication_class is not None and ServerOptions.authorization_class is not None:
+        ObjectManager.create_instance(ServerOptions.authentication_class, "authenticator")
+        ObjectManager.create_instance(ServerOptions.authorization_class, "authorizer")
+        has_auth = True
+
+    _log.debug(f"Available Services: {ObjectManager.get_available_services()}")
+
+    ObjectManager.init_services()
 
     # Retrieve the config store service as it is first to load even before the message bus.
-    config_store = service_config.get_service_instance("volttron.services.config_store")
+    config_store = ObjectManager.get_service("volttron.platform.config_store")
 
-    # Determine message bus and setup
-    auth_service = service_config.get_service_instance("volttron.services.auth")
+    if has_auth:
+        # Determine message bus and setup
+        auth_service = ObjectManager.get_service("volttron.services.auth")
 
-    mb_params = runtime.message_bus_cls.get_default_parameters()
-    mb_params.credential_manager = cred_manager
-    mb_params.auth_service = auth_service
+    mb: MessageBusInterface = ObjectManager.create_instance(runtime.message_bus_cls)
 
-    _log.info("Loaded Message Bus Parameters")
-    mb = runtime.message_bus_cls()
-    mb.set_parameters(mb_params)
+    # mb_params = runtime.message_bus_cls.get_default_parameters()
+    # mb_params.credential_manager = cred_manager
+    # mb_params.auth_service = auth_service
+
+    # _log.info("Loaded Message Bus Parameters")
+    # mb = runtime.message_bus_cls()
+    # mb.set_parameters(mb_params)
+    _log.info(f"Starting MessageBus {mb.__class__.__name__}")
+    mb.start()
 
     _log.debug("Starting volttron.services.config_store")
     event = gevent.event.Event()
@@ -333,22 +334,19 @@ def start_volttron_process(runtime: ServerRuntime):
 
     spawned_greenlets.append(config_store_task)
 
-    _log.info(f"Starting MessageBus {mb.__class__.__name__}")
-    mb.start()
-
     _log.debug("Starting volttron.services.auth")
-    event = gevent.event.Event()
-    auth_task = gevent.spawn(auth_service.core.run, event)
-    event.wait()
-    del event
-    spawned_greenlets.append(auth_task)
+    # event = gevent.event.Event()
+    # auth_task = gevent.spawn(auth_service.core.run, event)
+    # event.wait()
+    # del event
+    # spawned_greenlets.append(auth_task)
 
-    start_up_services = ("volttron.services.config_store",
-                         "volttron.services.auth")
+    start_up_services = ("volttron.services.config_store", "volttron.services.auth")
 
-    for service_name in service_config.get_service_names():
+    for service_name in ObjectManager.get_available_services():
         if service_name not in start_up_services:
-            instance = service_config.get_service_instance(service_name)
+            instance = ObjectManager.get_service(
+                service_name)    #  service_config.get_service_instance(service_name)
             if instance is not None:
                 _log.debug(f"Starting {service_name}")
                 event = gevent.event.Event()
@@ -560,9 +558,8 @@ def start_volttron_process(runtime: ServerRuntime):
             _update_config_file()
 
         if opts.message_bus == "rmq":
-            if (opts.web_ssl_key is None or opts.web_ssl_cert is None
-                    or (not os.path.isfile(opts.web_ssl_key)
-                        and not os.path.isfile(opts.web_ssl_cert))):
+            if (opts.web_ssl_key is None or opts.web_ssl_cert is None or
+                (not os.path.isfile(opts.web_ssl_key) and not os.path.isfile(opts.web_ssl_cert))):
                 # This is different than the master.web cert which is used for the agent to connect
                 # to rmq server.  The master.web-server certificate will be used for the platform web
                 # services.
@@ -685,8 +682,8 @@ def build_arg_parser(options: ServerOptions) -> argparse.ArgumentParser:
         usage="%(prog)s [OPTION]...",
         argument_default=argparse.SUPPRESS,
         epilog="Boolean options, which take no argument, may be inversed by "
-               "prefixing the option with no- (e.g. --autostart may be "
-               "inversed using --no-autostart).",
+        "prefixing the option with no- (e.g. --autostart may be "
+        "inversed using --no-autostart).",
     )
     parser.add_argument(
         "-c",
@@ -744,6 +741,31 @@ def build_arg_parser(options: ServerOptions) -> argparse.ArgumentParser:
         default=logging.WARNING,
         help="set logger verboseness",
     )
+    parser.add_argument("--agent-core",
+                        type=str,
+                        default=options.agent_core,
+                        help="The core agent to use when creating an agent.")
+    parser.add_argument("--messagebus",
+                        type=str,
+                        default=options.message_bus,
+                        help="The message bus to use during startup.")
+    parser.add_argument("--auth-service",
+                        type=str,
+                        default=options.auth_service,
+                        help="The auth service to use for authentication of clients.")
+
+    parser.add_argument("--service-config",
+                        type=str,
+                        default=options.service_config,
+                        help="Location of the service configuration file.")
+    parser.add_argument("--authentication-class",
+                        type=str,
+                        default=options.authentication_class,
+                        help="Class used with the AuthService for authentication")
+    parser.add_argument("--authorization-class",
+                        type=str,
+                        default=options.authorization_class,
+                        help="Class used with the AuthService for authorization")
     # parser.add_argument(
     #    '--volttron-home', env_var='VOLTTRON_HOME', metavar='PATH',
     #    help='VOLTTRON configuration directory')
@@ -803,13 +825,13 @@ def build_arg_parser(options: ServerOptions) -> argparse.ArgumentParser:
         "--agent-monitor-frequency",
         default=600,
         help="How often should the platform check for crashed agents and "
-             "attempt to restart. Units=seconds. Default=600",
+        "attempt to restart. Units=seconds. Default=600",
     )
     agents.add_argument(
         "--agent-isolation-mode",
         default=False,
         help="Require that agents run with their own users (this requires "
-             "running scripts/secure_user_permissions.sh as sudo)",
+        "running scripts/secure_user_permissions.sh as sudo)",
     )
 
     ipc = "ipc://%s$VOLTTRON_HOME/run/" % ("@" if sys.platform.startswith("linux") else "")
@@ -822,12 +844,11 @@ def build_arg_parser(options: ServerOptions) -> argparse.ArgumentParser:
         volttron_home=options.volttron_home,
         autostart=True,
         vip_address=[],
-        # vip_local_address=ipc + "vip.socket",
+    # vip_local_address=ipc + "vip.socket",
         instance_name=None,
         resource_monitor=True,
         msgdebug=None,
-        setup_mode=False
-    )
+        setup_mode=False)
 
     return parser
 
@@ -840,10 +861,11 @@ def main():
     """
     volttron_home = os.path.normpath(
         config.expandall(os.environ.get("VOLTTRON_HOME", "~/.volttron")))
-    server_options = ServerOptions(volttron_home=volttron_home)
+    ServerOptions.volttron_home = volttron_home
     os.environ["VOLTTRON_HOME"] = volttron_home
 
-    parser = build_arg_parser(server_options)
+    parser = build_arg_parser(ServerOptions)
+
     # Parse and expand options
     args = sys.argv[1:]
     conf = os.path.join(volttron_home, "config")
@@ -852,9 +874,8 @@ def main():
         args = args + ["--config", conf]
     logging.getLogger().setLevel(logging.NOTSET)
     opts = parser.parse_args(args)
-    server_runtime = ServerRuntime(opts=server_options)
 
-    start_volttron_process(server_runtime)
+    start_volttron_process(ServerRuntime)
 
 
 def _main():

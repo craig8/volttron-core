@@ -3,15 +3,16 @@ from typing import Any, Dict, Optional
 
 import pytest
 
-from volttron.types import (ClientCredentials, Credentials, CredentialStore, IdentityAlreadyExists,
-                            IdentityNotFound, InMemoryCredentialStore)
+from volttron.types import (ClientCredentials, Credentials, CredentialStore,
+                            IdentityAlreadyExists, IdentityNotFound,
+                            InMemoryCredentialStore)
 from volttron.types.auth.authentication import Authentication
 
 
 class UsernamePasswordCredential(ClientCredentials):
 
     def __init__(self, username: str, password: str):
-        super().__init__(identity=username, username=username, password=password)
+        super().__init__(identifier=username, username=username, password=password)
 
 
 @pytest.fixture()

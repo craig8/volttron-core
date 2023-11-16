@@ -6,3 +6,6 @@ from typing import Any
 class Parameter:
     key: str
     value: Any
+    
+    def __hash__(self) -> int:
+        return self.key.__hash__()

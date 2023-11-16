@@ -106,7 +106,7 @@ class PubSub(SubsystemBase):
             # pylint: disable=unused-argument
             self._processgreenlet = gevent.spawn(self._process_loop)
             core.onconnected.connect(self._connected)
-            self.vip_socket = self.core().socket
+            # self.vip_socket = self.core().socket
 
             def subscribe(member):    # pylint: disable=redefined-outer-name
                 for peer, bus, prefix, all_platforms, queue in annotations(
@@ -243,7 +243,8 @@ class PubSub(SubsystemBase):
         }
         sync_msg = jsonapi.dumpb(dict(subscriptions=subscriptions))
         frames = ["synchronize", "connected", sync_msg]
-        self.vip_socket.send_vip("", "pubsub", frames, result.ident, copy=False)
+        self.core().send_vip("", "pubsub", frames, result.ident, copy=False)
+        # self.vip_socket.send_vip("", "pubsub", frames, result.ident, copy=False)
 
         # 2073 - python3 dictionary keys method returns a dict_keys structure that isn't serializable.
         #        added list(subscriptions.keys()) to make it like python2 list of strings.

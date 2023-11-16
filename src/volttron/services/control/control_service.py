@@ -41,8 +41,8 @@ import base64
 import collections
 import hashlib
 import logging
-import logging.handlers
 import logging.config
+import logging.handlers
 import os
 import re
 import shutil
@@ -50,52 +50,36 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-from datetime import timedelta, datetime
-from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
 
 import gevent
 import gevent.event
+
+from volttron.client.known_identities import (AUTH, CONFIGURATION_STORE, PLATFORM_HEALTH)
+from volttron.client.messaging.health import STATUS_BAD, Status
+from volttron.client.vip.agent import RPC
+from volttron.client.vip.agent import Agent as BaseAgent
+from volttron.client.vip.agent import Core, Unreachable, VIPError
+from volttron.client.vip.agent.subsystems.query import Query
+from volttron.server import aip as aipmod
+from volttron.server import server_argparser as config
+from volttron.server.aip import AIPplatform
+from volttron.types.server_options import AIP
+from volttron.types.service import ServiceInterface
+from volttron.utils import ClientContext as cc
+from volttron.utils import (get_address, get_aware_utc_now, jsonapi, wait_for_volttron_shutdown)
+# TODO Do we need this here?
+# from volttron.services.auth import AuthEntry, AuthFile, AuthService
+from volttron.utils.certs import Certs
+from volttron.utils.jsonrpc import MethodNotFound, RemoteError
+from volttron.utils.scheduling import periodic
 
 # noinspection PyUnresolvedReferences
 # TODO: Fix requests issues
 # import grequests
 # import requests
 # from requests.exceptions import ConnectionError
-
-from volttron.server import server_argparser as config, aip as aipmod
-from volttron.server.aip import AIPplatform
-from volttron.types.server_config import ServiceConfigs
-from volttron.types import ServiceInterface
-from volttron.utils import (
-    ClientContext as cc,
-    get_address,
-    get_aware_utc_now,
-    wait_for_volttron_shutdown,
-)
-from volttron.utils import jsonapi
-
-from volttron.client.known_identities import (
-    CONFIGURATION_STORE,
-    PLATFORM_HEALTH,
-    AUTH,
-)
-from volttron.utils.jsonrpc import MethodNotFound, RemoteError
-
-# TODO Do we need this here?
-# from volttron.services.auth import AuthEntry, AuthFile, AuthService
-from volttron.utils.certs import Certs
-from volttron.utils.scheduling import periodic
-
-from volttron.client.vip.agent import (
-    Agent as BaseAgent,
-    Core,
-    RPC,
-    VIPError,
-    Unreachable,
-)
-
-from volttron.client.messaging.health import Status, STATUS_BAD
-from volttron.client.vip.agent.subsystems.query import Query
 
 # from volttron.platform import config
 # from volttron.platform.auth import AuthEntry, AuthFile, AuthException
@@ -128,27 +112,27 @@ class ControlService(ServiceInterface):
         """
         return {"agent-monitor-frequency": 10}
 
-    def __init__(self, aip: AIPplatform, **kwargs):
+    def __init__(self, **kwargs):
 
         tracker = kwargs.pop("tracker", None)
         agent_monitor_frequency = kwargs.pop("agent-monitor-frequency", 10)
         super().__init__(**kwargs)
-        self._aip = aip
+        self._aip = AIP
         self._tracker = tracker
         self.crashed_agents = {}
         self.agent_monitor_frequency = int(agent_monitor_frequency)
 
-        if self.core.publickey is None or self.core.secretkey is None:
-            (
-                self.core.publickey,
-                self.core.secretkey,
-                _,
-            ) = self.core._get_keys_from_addr()
-        if self.core.publickey is None or self.core.secretkey is None:
-            (
-                self.core.publickey,
-                self.core.secretkey,
-            ) = self.core._get_keys_from_keystore()
+        # if self.core.publickey is None or self.core.secretkey is None:
+        #     (
+        #         self.core.publickey,
+        #         self.core.secretkey,
+        #         _,
+        #     ) = self.core._get_keys_from_addr()
+        # if self.core.publickey is None or self.core.secretkey is None:
+        #     (
+        #         self.core.publickey,
+        #         self.core.secretkey,
+        #     ) = self.core._get_keys_from_keystore()
 
     @Core.receiver("onsetup")
     def _setup(self, sender, **kwargs):
@@ -2966,7 +2950,8 @@ def main(argv=sys.argv):
         "-v",
         "--verbose",
         action="store_true",
-        help="list all subsystem rpc_subsys methods in addition to the agent's rpc_subsys methods. If a method "
+        help=
+        "list all subsystem rpc_subsys methods in addition to the agent's rpc_subsys methods. If a method "
         "is specified, display the doc-string associated with the method.",
     )
 

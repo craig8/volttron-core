@@ -39,15 +39,18 @@
 from __future__ import annotations
 
 import logging
-import logging as _log
+import os
 from dataclasses import dataclass, fields
 
 import gevent
-
-from volttron.client.vip.agent.core import Core, BasicCore
-from volttron.client.vip.agent.subsystems import RPC, Hello, PeerList, Ping, Health, Heartbeat, PubSub, ConfigStore
+from volttron.client.vip.agent.core import BasicCore, Core
 from volttron.client.vip.agent.errors import Unreachable, VIPError
-from volttron.utils import is_valid_identity, get_address, ClientContext as cc
+from volttron.client.vip.agent.subsystems import (RPC, ConfigStore, Health, Heartbeat, Hello,
+                                                  PeerList, Ping, PubSub)
+from volttron.utils import ClientContext as cc
+from volttron.utils import get_address, get_class, is_valid_identity
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,26 +65,18 @@ class Agent(object):
 
     class Subsystems(object):
 
-        def __init__(
-            self,
-            owner: Agent,
-            core: Core,
-            agent_startup_config: AgentStartupConfig,
-            **kwargs
-        ):
+        def __init__(self, owner: Agent, core: Core, agent_startup_config: AgentStartupConfig,
+                     **kwargs):
             self.hello = Hello(core=core)
             self.ping = Ping(core=core)
             self.peerlist = PeerList(core=core)
             self.rpc = RPC(core=core, owner=owner, peerlist_subsys=self.peerlist)
-            self.pubsub = PubSub(core=core, owner=owner, peerlist_subsys=self.peerlist, rpc_subsys=self.rpc)
+            self.pubsub = PubSub(core=core,
+                                 owner=owner,
+                                 peerlist_subsys=self.peerlist,
+                                 rpc_subsys=self.rpc)
             self.health = Health(core=core, owner=owner, rpc_subsys=self.rpc)
-            self.heartbeat = Heartbeat(
-                owner,
-                core,
-                self.rpc,
-                self.pubsub,
-                agent_startup_config
-            )
+            self.heartbeat = Heartbeat(owner, core, self.rpc, self.pubsub, agent_startup_config)
             if agent_startup_config.enable_store:
                 self.config = ConfigStore(owner, core, self.rpc)
 
@@ -90,10 +85,12 @@ class Agent(object):
 
     def get_core_from_environment(self, **kwargs):
         from volttron.utils import get_subclasses
-        # TODO: Figure out standard way to do this.
-        cls = get_subclasses("volttron.messagebus.zmq", Core)
+        agent_core = os.environ.get('AGENT_CORE')
 
-        return cls[0](owner=self, **kwargs)
+        assert agent_core
+        module, class_name = agent_core.rsplit('.', 1)
+        cls = get_class(module, class_name)
+        return cls(owner=self, **kwargs)
 
     # def build_client_context(self, **kwargs):
     #     from volttron.utils import get_subclasses, get_class
@@ -101,10 +98,9 @@ class Agent(object):
     #     cls = get_subclasses("volttron.messagebus.zmq", core_cls)
     #     return cls[0](**kwargs)
 
-    def __init__(
-        self,
-        agent_startup_config: AgentStartupConfig = None,
-        **kwargs
+    def __init__(self,
+                 agent_startup_config: AgentStartupConfig = None,
+                 **kwargs
     #     identity=None,
     #     address=None,
     #     context=None,
@@ -126,15 +122,14 @@ class Agent(object):
     #     message_bus=None,
     #     volttron_central_address=None,
     #     volttron_central_instance_name=None,
-    ):
+                 ):
         identity = kwargs.get("identity")
-              # try:
+        # try:
 
         if identity is not None and not is_valid_identity(identity):
             _log.warning("Deprecation warning")
-            _log.warning("All characters in {identity} are not in the valid set.".format(
-                identity=identity))
-
+            _log.warning(
+                "All characters in {identity} are not in the valid set.".format(identity=identity))
 
         volttron_home = kwargs.get("volttron_home")
         if volttron_home is None:
@@ -150,54 +145,56 @@ class Agent(object):
 
         self.core = self.get_core_from_environment(**kwargs)
 
-        self.vip = Agent.Subsystems(owner=self, core=self.core, agent_startup_config=agent_startup_config)
+        self.vip = Agent.Subsystems(owner=self,
+                                    core=self.core,
+                                    agent_startup_config=agent_startup_config)
 
-            # if message_bus is not None and message_bus.lower() == "rmq":
-            #     _log.debug("Creating RMQ Core {}".format(identity))
-            #     self.core = RMQCore(
-            #         self,
-            #         identity=identity,
-            #         address=address,
-            #         context=context,
-            #         publickey=publickey,
-            #         secretkey=secretkey,
-            #         serverkey=serverkey,
-            #         instance_name=instance_name,
-            #         volttron_home=volttron_home,
-            #         agent_uuid=agent_uuid,
-            #         reconnect_interval=reconnect_interval,
-            #         version=version,
-            #         volttron_central_address=volttron_central_address,
-            #         volttron_central_instance_name=volttron_central_instance_name,
-            #     )
-            # else:
-            #     _log.debug("Creating ZMQ Core {}".format(identity))
-            #     self.core = ZMQCore(
-            #         self,
-            #         identity=identity,
-            #         address=address,
-            #         context=context,
-            #         publickey=publickey,
-            #         secretkey=secretkey,
-            #         serverkey=serverkey,
-            #         instance_name=instance_name,
-            #         volttron_home=volttron_home,
-            #         agent_uuid=agent_uuid,
-            #         reconnect_interval=reconnect_interval,
-            #         version=version,
-            #     )
-            # self.vip = Agent.Subsystems(
-            #     self,
-            #     self.core,
-            #     heartbeat_autostart,
-            #     heartbeat_period,
-            #     enable_store,
-            #     enable_web,
-            #     enable_channel,
-            #     message_bus,
-            # )
-            # self.core.setup()
-            # self.vip.rpc_subsys.export(self.core.version, "agent.version")
+        # if message_bus is not None and message_bus.lower() == "rmq":
+        #     _log.debug("Creating RMQ Core {}".format(identity))
+        #     self.core = RMQCore(
+        #         self,
+        #         identity=identity,
+        #         address=address,
+        #         context=context,
+        #         publickey=publickey,
+        #         secretkey=secretkey,
+        #         serverkey=serverkey,
+        #         instance_name=instance_name,
+        #         volttron_home=volttron_home,
+        #         agent_uuid=agent_uuid,
+        #         reconnect_interval=reconnect_interval,
+        #         version=version,
+        #         volttron_central_address=volttron_central_address,
+        #         volttron_central_instance_name=volttron_central_instance_name,
+        #     )
+        # else:
+        #     _log.debug("Creating ZMQ Core {}".format(identity))
+        #     self.core = ZMQCore(
+        #         self,
+        #         identity=identity,
+        #         address=address,
+        #         context=context,
+        #         publickey=publickey,
+        #         secretkey=secretkey,
+        #         serverkey=serverkey,
+        #         instance_name=instance_name,
+        #         volttron_home=volttron_home,
+        #         agent_uuid=agent_uuid,
+        #         reconnect_interval=reconnect_interval,
+        #         version=version,
+        #     )
+        # self.vip = Agent.Subsystems(
+        #     self,
+        #     self.core,
+        #     heartbeat_autostart,
+        #     heartbeat_period,
+        #     enable_store,
+        #     enable_web,
+        #     enable_channel,
+        #     message_bus,
+        # )
+        # self.core.setup()
+        # self.vip.rpc_subsys.export(self.core.version, "agent.version")
         # except Exception as e:
         #     _log.exception("Exception creating Agent. {}".format(e))
         #     raise e

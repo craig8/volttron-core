@@ -36,31 +36,23 @@
 # under Contract DE-AC05-76RL01830
 # }}}
 
-import logging
+import errno
 import glob
+import logging
 import os
 import os.path
-import errno
 from csv import DictReader
 from io import StringIO
 
 import gevent
-
 from gevent.lock import Semaphore
 
-from volttron.types import ServiceInterface
-from volttron.utils import (
-    parse_json_config,
-    get_aware_utc_now,
-    format_timestamp,
-)
-from volttron.utils import jsonapi
-
+from volttron.client.vip.agent import RPC, Agent, Core, Unreachable, VIPError
+from volttron.types.service import ServiceInterface
+from volttron.utils import (format_timestamp, get_aware_utc_now, jsonapi, parse_json_config)
+from volttron.utils.jsonrpc import MethodNotFound, RemoteError
 from volttron.utils.persistance import PersistentDict
-
-from volttron.utils.jsonrpc import RemoteError, MethodNotFound
-from volttron.utils.storeutils import check_for_recursion, strip_config_name, store_ext
-from volttron.client.vip.agent import Agent, Core, RPC, Unreachable, VIPError
+from volttron.utils.storeutils import (check_for_recursion, store_ext, strip_config_name)
 
 _log = logging.getLogger(__name__)
 

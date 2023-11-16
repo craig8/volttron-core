@@ -1,0 +1,39 @@
+@startuml
+
+class BaseServerAuthorization {
+    - auth_service
+    + approve_authorization(user_id)
+    + deny_authorization(user_id)
+    + delete_authorization(user_id)
+    + get_authorization(user_id)
+    + get_authorization_status(user_id)
+    + get_pending_authorizations()
+    + get_approved_authorizations()
+    + get_denied_authorizations()
+    + update_user_capabilities(user_to_caps)
+    + load_protected_topics(protected_topics_data)
+    + update_protected_topics(protected_topics)
+}
+
+class BaseClientAuthorization {
+    - auth_service
+}
+
+abstract class BaseAuthentication {
+    + create_authentication_parameters()
+}
+
+class BaseServerAuthentication {
+    - auth_service
+    - authorization: BaseServerAuthorization
+    + setup_authentication()
+    + handle_authentication(protected_topics)
+    + stop_authentication()
+    + unbind_authentication()
+}
+
+BaseServerAuthentication --|> BaseAuthentication
+BaseServerAuthentication *-- BaseServerAuthorization
+BaseServerAuthentication *-- BaseClientAuthorization
+
+@enduml

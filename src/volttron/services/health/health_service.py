@@ -36,14 +36,14 @@
 # under Contract DE-AC05-76RL01830
 # }}}
 
+import logging
 from collections import defaultdict
 from datetime import datetime
-import logging
 
-from volttron.client.known_identities import CONTROL_CONNECTION, PROCESS_IDENTITIES
-from volttron.types import ServiceInterface
+from volttron.client.known_identities import (CONTROL_CONNECTION, PROCESS_IDENTITIES)
+from volttron.client.vip.agent import RPC, Agent, Core
+from volttron.types.service import ServiceInterface
 from volttron.utils import format_timestamp
-from volttron.client.vip.agent import Agent, Core, RPC
 
 # TODO: rmq addition
 # from volttron.utils.rmq_config_params import RMQConfig

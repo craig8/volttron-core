@@ -1,0 +1,27 @@
+@startuml AuthFramework
+
+!include common.puml
+
+
+
+class ZmqCredentials {
+    +__init__(identity: str, publickey: str, secretkey: str)
+}
+
+class ZmqCredentialStore {
+    +__init__(authfile: str)
+}
+
+class ZmqAuthenticator {
+    +__init__(credential_store: ZmqCredentialStore)
+}
+
+Credentials <.. ZmqCredentials
+CredentialStore <.. ZmqCredentialStore
+Authorization <.. ZmqAuthenticator
+Authentication <.. ZmqAuthenticator
+Authorizer <.. ZmqAuthenticator
+AuthService *-- Authentication
+AuthService *-- Authorization
+
+@enduml

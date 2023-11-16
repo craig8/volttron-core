@@ -2938,9 +2938,9 @@ def main():
     if opts.log_config:
         logging.config.fileConfig(opts.log_config)
 
-    credentials = Credentials.from_environment(opts.volttron_home, CONTROL_CONNECTION)
-    os.environ['VOLTTRON_CREDENTIAL'] = json.dumps(credentials.__dict__)
-    os.environ['VOLTTRON_SERVER_CREDENTIAL'] = json.dumps(credentials.__dict__)
+    # credentials = Credentials.from_environment(opts.volttron_home, CONTROL_CONNECTION)
+    # os.environ['VOLTTRON_CREDENTIAL'] = json.dumps(credentials.__dict__)
+    # os.environ['VOLTTRON_SERVER_CREDENTIAL'] = json.dumps(credentials.__dict__)
 
     opts.connection = ControlConnection(address=opts.vip_address)
     # opts.connection: ControlConnection = None

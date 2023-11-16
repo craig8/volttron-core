@@ -1,0 +1,98 @@
+@startuml
+
+class BaseAuthentication {
+    +create_authentication_parameters()
+}
+
+class BaseServerAuthentication {
+    +setup_authentication()
+    +authenticate(domain, address, mechanism, credentials)
+    +handle_authentication(protected_topics)
+    +stop_authentication()
+    +unbind_authentication()
+}
+
+class BaseServerAuthorization {
+    +create_authenticated_address()
+    +approve_authorization(user_id)
+    +deny_authorization(user_id)
+    +delete_authorization(user_id)
+    +update_user_capabilities(user_to_caps)
+    +load_protected_topics(protected_topics_data)
+    +update_protected_topics(protected_topics)
+    +get_authorization(user_id)
+    +get_authorization_status(user_id)
+    +get_pending_authorizations()
+    +get_approved_authorizations()
+    +get_denied_authorizations()
+}
+
+class BaseClientAuthorization {
+}
+
+class ZMQClientParameters {
+    -address: str
+    -identity: str
+    -publickey: str
+    -secretkey: str
+    -serverkey: str
+    -volttron_home: str
+    -agent_uuid: str
+}
+
+class ZMQClientAuthentication {
+    -params: ZMQClientParameters
+    -address: str
+    -identity: str
+    -agent_uuid: str
+    -publickey: str
+    -secretkey: str
+    -serverkey: str
+    -volttron_home: str
+    +create_authentication_parameters()
+    +_add_keys_to_addr()
+    +_get_keys_from_keystore()
+    +_set_public_and_secret_keys()
+    +_set_server_key()
+    +_get_serverkey_from_known_hosts()
+    +_get_keys_from_addr()
+}
+
+class ZMQServerAuthentication {
+    -auth_service: AuthService
+    +setup_authentication()
+    +authenticate(domain, address, mechanism, credentials)
+    +handle_authentication(protected_topics)
+    +stop_authentication()
+    +unbind_authentication()
+    +_update_auth_pending(domain, address, mechanism, credential, user_id)
+}
+
+class ZMQAuthorization {
+    -auth_service: AuthService
+    +create_authenticated_address()
+    +approve_authorization(user_id)
+    +deny_authorization(user_id)
+    +delete_authorization(user_id)
+    +update_user_capabilities(user_to_caps)
+    +load_protected_topics(protected_topics_data)
+    +update_protected_topics(protected_topics)
+    +_update_auth_entry(domain, address, mechanism, credential, user_id, is_allow=True)
+    +_remove_auth_entry(credential, is_allow=True)
+    +get_authorization(user_id)
+    +get_authorization_status(user_id)
+    +get_pending_authorizations()
+    +get_approved_authorizations()
+    +get_denied_authorizations()
+}
+
+class ZMQClientAuthorization {
+    -auth_service: AuthService
+}
+
+BaseAuthentication <|-- ZMQClientAuthentication
+BaseServerAuthentication <|-- ZMQServerAuthentication
+BaseServerAuthorization <|-- ZMQAuthorization
+BaseClientAuthorization <|-- ZMQClientAuthorization
+
+@enduml

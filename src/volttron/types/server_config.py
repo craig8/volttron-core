@@ -6,15 +6,13 @@ import os
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Type
+from typing import Any, Dict, List, Optional, Type
 
 import yaml
-
-from volttron.types.server_options import ServerRuntime
 from volttron.types.credentials import Credentials
+#from volttron.types.server_options import ServerRuntime
 from volttron.types.service import ServiceInterface
 from volttron.utils import get_subclasses
-
 
 # import volttron.server.aip as aipModule
 _log = logging.getLogger(__name__)
@@ -31,7 +29,7 @@ def __not_set__(property_name: str, value: Any):
 
 
 @dataclass
-class ServiceConfigs:
+class _ServiceConfigs:
     service_config_file: Path
     service_credentials: Credentials
     server_credentials: Credentials
@@ -40,8 +38,8 @@ class ServiceConfigs:
         from volttron.server.serviceloader import discover_services
         self._loaded = {}
         if self.service_config_file.exists():
-            self._loaded = yaml.safe_load(self.service_config_file.read_text().replace("$volttron_home",
-                                                                                       os.environ['VOLTTRON_HOME']))
+            self._loaded = yaml.safe_load(self.service_config_file.read_text().replace(
+                "$volttron_home", os.environ['VOLTTRON_HOME']))
 
         self._namespace = self._loaded.get('namespace', 'volttron.services')
         self._discovered_services = discover_services(self._namespace)
@@ -94,7 +92,8 @@ class ServiceConfigs:
                 elif arg_name == 'aip':
                     kwargs[arg_name] = aip
             _log.info(f"Creating {service_name}")
-            self._instances[service_name] = service_cls(**kwargs)
+            if service_name != 'volttron.services.auth':
+                self._instances[service_name] = service_cls(**kwargs)
 
     def get_service_identity(self, service_name) -> str:
         return self._identity_map.get(service_name)
@@ -217,3 +216,6 @@ class ServiceConfigs:
     #     if isinstance(value, str):
     #         value = Path(value)
     #     self.__auth_file__ = value
+
+
+# ServiceConfigs = _ServiceConfigs()

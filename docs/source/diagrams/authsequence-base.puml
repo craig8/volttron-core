@@ -1,0 +1,79 @@
+@startuml authsequencebase
+
+actor Agent
+
+Agent -> Authentication: authenticate(credentials)
+
+Authentication -> CredentialStore: retrieve_credentials(identity)
+
+CredentialStore -> Credentials: get_credentials()
+
+Agent -> Authorization: add_capability(credentials, name, value)
+
+Authorization -> CredentialStore: retrieve_credentials(identity)
+
+CredentialStore -> Credentials: get_credentials()
+
+if (authorized) then (yes)
+    Authorization -> CredentialStore: add_capability(credentials, name, value)
+    Authorization --> Agent: OK
+else (no)
+    Agent -> Agent: raise unauthorized exception
+    Agent --> Authorization: unauthorized exception
+endif
+
+Agent -> Authorization: remove_capability(credentials, name)
+
+Authorization -> CredentialStore: retrieve_credentials(identity)
+
+CredentialStore -> Credentials: get_credentials()
+
+if (authorized) then (yes)
+    Authorization -> CredentialStore: remove_capability(credentials, name)
+    Authorization --> Agent: OK
+else (no)
+    Agent -> Agent: raise unauthorized exception
+    Agent --> Authorization: unauthorized exception
+endif
+
+Agent -> Authorization: add_group(group)
+
+if (authorized) then (yes)
+    Authorization -> CredentialStore: add_group(group)
+    Authorization --> Agent: OK
+else (no)
+    Agent -> Agent: raise unauthorized exception
+    Agent --> Authorization: unauthorized exception
+endif
+
+Agent -> Authorization: remove_group(group)
+
+if (authorized) then (yes)
+    Authorization -> CredentialStore: remove_group(group)
+    Authorization --> Agent: OK
+else (no)
+    Agent -> Agent: raise unauthorized exception
+    Agent --> Authorization: unauthorized exception
+endif
+
+Agent -> Authorization: add_user_to_group(credentials, group)
+
+if (authorized) then (yes)
+    Authorization -> CredentialStore: add_user_to_group(credentials, group)
+    Authorization --> Agent: OK
+else (no)
+    Agent -> Agent: raise unauthorized exception
+    Agent --> Authorization: unauthorized exception
+endif
+
+Agent -> Authorization: remove_user_from_group(credentials, group)
+
+if (authorized) then (yes)
+    Authorization -> CredentialStore: remove_user_from_group(credentials, group)
+    Authorization --> Agent: OK
+else (no)
+    Agent -> Agent: raise unauthorized exception
+    Agent --> Authorization: unauthorized exception
+endif
+
+@enduml

@@ -1,0 +1,20 @@
+@startuml
+
+title Authorization Sequence
+
+actor Agent
+
+Agent -> Authentication: authenticate(Credentials)
+
+alt authorized
+    Agent -> CredentialStore: add_capability(credentials, name, value)
+    Agent -> CredentialStore: remove_capability(credentials, name)
+    Agent -> CredentialStore: add_group(group)
+    Agent -> CredentialStore: remove_group(group)
+    Agent -> CredentialStore: remove_user_from_group(credentials, group)
+    Agent -> CredentialStore: add_user_to_group(credentials, group)
+else not authorized
+    Authentication --> Agent: false
+end
+
+@enduml

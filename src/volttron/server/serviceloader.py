@@ -4,37 +4,36 @@ import importlib
 import inspect
 import logging
 import pkgutil
-from pathlib import Path
-
 import sys
 from copy import copy
+from pathlib import Path
 from types import ModuleType
-from typing import List, Tuple, Dict, Set, KeysView, Optional
+from typing import TYPE_CHECKING, Dict, KeysView, List, Optional, Set, Tuple
 
-from volttron.types import ServiceConfigs
+if TYPE_CHECKING:
+    from volttron.types.server_options import ServerRuntime, ServiceConfigs
+
 from volttron.types.service import ServiceInterface
-from volttron.types.server_options import ServerRuntime
-from volttron.utils import get_subclasses, get_module, get_class
+from volttron.utils import get_class, get_module, get_subclasses
 
 _log = logging.getLogger(__name__)
 
 __discovered_plugins__: Dict[str, Tuple] = {}
 __namespaces__: Set[str] = set()
 __required_plugins__: Set[str] = set()
-__plugin_startup_order__: List[str] = [
-    "volttron.services.config_store"
-]
-__disabled_plugins__: Set[str] = {'volttron.services.health',
-                                  'volttron.services.routing',
-                                  'volttron.services.peer',
-                                  'volttron.services.external'}
+__plugin_startup_order__: List[str] = ["volttron.services.config_store"]
+__disabled_plugins__: Set[str] = {
+    'volttron.services.health', 'volttron.services.routing', 'volttron.services.peer',
+    'volttron.services.external'
+}
 
 __all__ = ["get_service_names", "init_services", "discover_services", "get_service_instance"]
 
-__service_interface_class__ = get_class('volttron.types', 'ServiceInterface')
+__service_interface_class__ = get_class('volttron.types.service', 'ServiceInterface')
 
 __started_services__: Dict[str, ServiceInterface] = {}
 __service_instances__: Dict[str, ServiceInterface] = {}
+
 
 def get_service_names() -> KeysView[str]:
     return __discovered_plugins__.keys()
@@ -56,7 +55,8 @@ def get_service_instance(service_name: str) -> Optional[ServiceInterface]:
     return __service_instances__.get(service_name)
 
 
-def init_services(runtime: ServerRuntime, config: ServiceConfigs) -> List[Tuple[str, ServiceInterface]]:
+def init_services(runtime: ServerRuntime,
+                  config: ServiceConfigs) -> List[Tuple[str, ServiceInterface]]:
 
     # default_kwargs = dict(enable_store=False,
     #                       address=config.internal_address,

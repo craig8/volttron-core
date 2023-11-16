@@ -1,0 +1,11 @@
+@startuml Auth Framework
+
+!include zmqauth.puml
+
+@enduml
+
+@startuml Common
+
+!include common.puml
+
+@enduml

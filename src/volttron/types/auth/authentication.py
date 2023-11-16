@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
-from .credentials import Credentials
+from .credentials import Credentials, PublicCredentials
 
 
 class AuthenticationError(Exception):
@@ -27,5 +27,32 @@ class Authentication(ABC):
 
         :return: True if the credentials are valid, False otherwise.
         :rtype: bool
+        """
+        pass
+
+    @abstractmethod
+    def add_credentials(self, public_credentials: PublicCredentials):
+        """
+        Add a credential to the authentication store.  
+        
+        This method should be able to persist the public_credentials to a store such that the authenticate
+        method will be able to authenticate based upon a public/private credential pair.
+
+        :param credentials: The credentials to use for authentication.
+        :type credentials: PublicCredentials
+        """
+        pass
+
+    @abstractmethod
+    def remove_credentials(self, idenitifier: str):
+        """
+        Remove credentials from the credential store.
+        
+        This method should be able to remove an entry in the credentials such that the authenticate
+        method will NOT be able to authenticate based upon a public/private credential pair for the 
+        given idenitifier.
+
+        :param idenitifier: The identifier to use for authentication.
+        :type idenitifier: str
         """
         pass

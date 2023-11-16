@@ -37,6 +37,8 @@
 # }}}
 """Component for the instantiation and packaging of agents."""
 
+from __future__ import annotations
+
 import errno
 import grp
 import logging
@@ -47,7 +49,10 @@ import shutil
 import signal
 import sys
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from volttron.types.server_options import ServerRuntime
 
 # import requests
 import gevent
@@ -55,14 +60,13 @@ import gevent.event
 import yaml
 from gevent import subprocess
 from gevent.subprocess import PIPE
-
-# from wheel.tool import unpack
-from volttron.utils import (ClientContext as cc, get_utc_seconds_from_epoch, execute_command)
 from volttron.client.vip.agent import Agent
-from volttron.types import AgentFactory, ServerRuntime
-from volttron.utils import jsonapi
+# from wheel.tool import unpack
+from volttron.utils import ClientContext as cc
+from volttron.utils import execute_command, get_utc_seconds_from_epoch, jsonapi
 # from volttron.utils.certs import Certs
 from volttron.utils.identities import is_valid_identity
+
 # from volttron.client.known_identities import VOLTTRON_CENTRAL_PLATFORM
 #import volttron.client.vip.agent as vmod
 
@@ -256,6 +260,7 @@ class SecureExecutionEnvironment(object):
 
 
 class SecureUserActions:
+
     def add_agent_user_group(self):
         user = pwd.getpwuid(os.getuid())
         group_name = "volttron_{}".format(self.instance_name)
@@ -410,7 +415,6 @@ class AIPplatform(object):
         self.instance_name = cc.get_instance_name()    # get_platform_instance_name()
 
         self.user_actions = SecureUserActions()
-
 
     def setup(self):
         """Creates paths for used directories for the instance."""
@@ -1157,5 +1161,3 @@ class AIPplatform(object):
         for agent_uuid, execenv in self.active_agents.items():
             if execenv.process.pid == pid:
                 return agent_uuid if execenv.process.poll() is None else None
-
-

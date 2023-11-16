@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -10,6 +12,10 @@ class IdentityAlreadyExists(Exception):
     pass
 
 
+class InvalidCredentials(Exception):
+    pass
+
+
 class Credentials(ABC):
     """
     Interface for credentials objects.
@@ -18,6 +24,7 @@ class Credentials(ABC):
     for authentication.
 
     """
+
     @abstractmethod
     def get_identifier(self) -> str:
         pass
@@ -32,6 +39,31 @@ class Credentials(ABC):
         """
         pass
 
+    @staticmethod
+    @abstractmethod
+    def create(identifier: str, **kwargs) -> Credentials:
+        pass
+
+
+class PublicCredentials(Credentials):
+
+    def __init__(self, identifier: str, **kwargs) -> None:
+        self._identifier = identifier
+        self._kwargs = kwargs
+        for k, v in kwargs.items():
+            if not isinstance(k, str):
+                raise InvalidCredentials(f"Key must be string not {type(k)}")
+
+    def get_credentials(self) -> Dict[str, Any]:
+        return self._kwargs
+
+    def get_identifier(self) -> str:
+        return self._identifier
+
+    @staticmethod
+    def create(identifier: str, **kwargs) -> Credentials:
+        return PublicCredentials(identifier, **kwargs)
+
 
 class ClientCredentials(Credentials):
 
@@ -43,7 +75,7 @@ class ClientCredentials(Credentials):
                 raise ValueError(f"Item {k} is not a string. String are required for keys")
 
         self._credentials = kwargs
-        
+
     def get_identifier(self) -> str:
         return self._identifier
 

@@ -52,6 +52,13 @@ class MessageBusInterface:
         raise NotImplementedError()
 
     def start(self):
+        """
+        Start the information flow between volttron and the message bus.  this
+        method should start/connect to the implemnted messsage bus.  For zmq
+        this means starting a process and then having the server ready for connections from
+        agents.  Whereas in mqtt this will mean connecting the server to the broker and then
+        modifying channels with specific access controls etc. 
+        """
         raise NotImplementedError()
 
     def stop(self):

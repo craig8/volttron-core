@@ -1,0 +1,43 @@
+@startuml Common
+
+interface Credentials {
+    +__init__(identity: str, **kwargs)
+    +get_credentials() : Dict[str, Any]
+}
+
+interface CredentialStore {
+    +store_credentials(identity: str, credentials: Credentials) : None
+    +retrieve_credentials(identity: str) : Credentials
+}
+
+interface AuthService {
+    +__init__(authenticator: Authentication, authorizer: Authorization)
+    *is_authorized(credentials: Credentials, action: str, resource: str) : bool
+    *register_credentials(credentials: Credentials) : None
+    *add_role(role: str) : None
+    *remove_role(role: str) : None
+    *add_credential_to_role(credentials: Credentials, group: str) : None
+    *remove_credential_from_role(credentials: Credentials, group: str) : None
+    *add_capability(name: str, value: str | List | Dict, group: str = None, credentials: Credentials = None) : None
+    *remove_capability(name: str, group: str, credentials: Credentials = None): None    
+}
+
+interface Authentication {
+    +authenticate(Credentials)
+}
+
+interface Authorizer {
+    +is_authorized(credentials: Credentials, action: str, resource: str) : bool
+}
+
+interface Authorization {
+    +register_credentials(credentials: Credentials) : None
+    +add_role(group: str) : None
+    +remove_role(group: str) : None
+    +add_credential_to_role(credentials: Credentials, group: str) : None
+    +remove_credential_from_role(credentials: Credentials, group: str) : None
+    +add_capability(name: str, value: str | List | Dict, group: str = None, credentials: Credentials = None) : None
+    +remove_capability(name: str, group: str, credentials: Credentials = None): None    
+}
+
+@enduml
