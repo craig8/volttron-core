@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 
 import importlib
 import inspect
@@ -11,7 +12,8 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Dict, KeysView, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
-    from volttron.types.server_options import ServerRuntime, ServiceConfigs
+    from volttron.server.server_options import ServerRuntime
+    from volttron.server.serviceloader import ServiceData
 
 from volttron.types.service import ServiceInterface
 from volttron.utils import get_class, get_module, get_subclasses
@@ -27,7 +29,10 @@ __disabled_plugins__: Set[str] = {
     'volttron.services.external'
 }
 
-__all__ = ["get_service_names", "init_services", "discover_services", "get_service_instance"]
+__all__ = [
+    "get_service_names", "init_services", "discover_services", "get_service_instance",
+    "ServiceData"
+]
 
 __service_interface_class__ = get_class('volttron.types.service', 'ServiceInterface')
 
@@ -182,6 +187,18 @@ def __discover_services__(namespace: str | ModuleType) -> List[str]:
         found.append(name)
         __discovered_plugins__[name] = importlib.import_module(name)
     return found
+
+
+@dataclass
+class ServiceData:
+    klass_path: str
+    identity: str
+    args: List = field(default_factory=list)
+
+    def __post_init__(self):
+        module, name = '.'.join(self.klass_path.split(".")[:-1]), self.klass_path.split(".")[-1]
+        klass = get_class(module, name)
+        assert klass
 
 
 # """

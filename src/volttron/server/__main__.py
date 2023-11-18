@@ -50,7 +50,7 @@ import gevent
 import yaml
 from gevent import monkey
 
-from volttron.types.parameter import Parameter
+#from volttron.types.parameter import Parameter
 
 monkey.patch_socket()
 monkey.patch_ssl()
@@ -58,11 +58,12 @@ monkey.patch_ssl()
 from volttron.client.known_identities import (CONTROL, CONTROL_CONNECTION, PLATFORM_WEB)
 from volttron.server import aip
 from volttron.server import server_argparser as config
-from volttron.server.log_actions import (LogLevelAction, configure_logging, log_to_file)
-from volttron.types.credentials import (CredentialsError, CredentialsGenerator, CredentialsManager)
-from volttron.types.factories import Factories
+from volttron.server.log_actions import (
+    LogLevelAction, )    # configure_logging, log_to_file)
+#from volttron.types.credentials import (CredentialsError, CredentialsGenerator, CredentialsManager)
+#from volttron.types.factories import Factories
 from volttron.types.message_bus import MessageBusInterface
-from volttron.types.server_options import (ObjectManager, ServerOptions, ServerRuntime)
+from volttron.server.server_options import (ObjectManager, ServerOptions, ServerRuntime)
 # Link to the volttron-client library
 # import gevent.monkey
 # import gevent.threading as threading
@@ -137,7 +138,6 @@ _log = logging.getLogger(os.path.basename(sys.argv[0]) if __name__ == "__main__"
 VOLTTRON_INSTANCES = Path("~/.volttron_instances").expanduser().resolve()
 
 os.environ['MESSAGE_BUS'] = ServerOptions.message_bus
-os.environ['AGENT_CORE'] = ServerOptions.agent_core
 
 server_runtime = ServerRuntime
 

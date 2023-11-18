@@ -7,16 +7,17 @@ import socket
 from configparser import ConfigParser
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import ClassVar, List, Type
-
-import yaml
+from typing import List, TYPE_CHECKING
 
 from volttron.server.aip import AIPplatform
-from volttron.types.credentials import CredentialsGenerator, CredentialsManager
 from volttron.types.message_bus import MessageBusInterface
 from volttron.types.service import ServiceInterface
 from volttron.utils import get_class
 from volttron.utils.dynamic_helper import get_subclasses
+
+if TYPE_CHECKING:
+    from volttron.server.server_options import ServerRuntime
+    from volttron.server.serviceloader import ServiceData
 
 _log = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class _ServerOptions:
     :ivar auth_service: The fully-qualified name of the authentication service class to use. Default is
                         'volttron.services.auth'.
     :vartype auth_service: str
-    
+
     :ivar service_config: The Path to the service config file for loading services into the context.
     :vartype service_service: Path
     """
@@ -76,12 +77,11 @@ class _ServerOptions:
     instance_name: str = None
     address: str = "tcp://127.0.0.1:22916"
     agent_isolation_mode: bool = False
-    message_bus: str = "volttron.messagebus.zmq.ZmqMessageBus"
-    agent_core: str = "volttron.messagebus.zmq.ZmqCore"
-    authentication_class: str = "volttron.messagebus.zmq.ZmqAuthentication"
-    authorization_class: str = "volttron.messagebus.zmq.ZmqAuthorization"
-    auth_service: str = "volttron.services.auth"
-    service_config: str = None
+    # Module that holds the zmq based classes, though we shorten it assumeing
+    # it's in volttron.messagebus
+    message_bus: str = "zmq"
+
+    services: List[ServiceData] = field(default_factory=list)
 
     def __post_init__(self):
         """
@@ -91,19 +91,33 @@ class _ServerOptions:
 
         If `instance_name` is None, it is set to the hostname of the machine.
         """
+        from volttron.server.serviceloader import discover_services, ServiceData
+
         if os.environ.get('VOLTTRON_HOME'):
             self.volttron_home = Path(os.environ.get('VOLTTRON_HOME')).expanduser()
         if isinstance(self.volttron_home, str):
             self.volttron_home = Path(self.volttron_home)
         # Should be the only location where we create VOLTTRON_HOME
         if not self.volttron_home.is_dir():
-            self.volttron_home.mkdir(mode=0o777, exist_ok=True, parents=True)
+            self.volttron_home.mkdir(mode=0o755, exist_ok=True, parents=True)
         if self.instance_name is None:
             self.instance_name = socket.gethostname()
-        if self.service_config is None:
-            self.service_config = self.volttron_home / "service_config.yml"
-        if not isinstance(self.service_config, str):
-            self.service_config = Path(self.service_config)
+
+        namespace = "volttron.services"
+        discovered_services = discover_services(namespace)
+
+        for mod_name in discovered_services:
+
+            try:
+                cls = get_subclasses(mod_name, ServiceInterface)[0]
+                # Use platform as the default for identities.
+                identity = mod_name.replace("volttron.services", "platform")
+                data = ServiceData(mod_name, identity)
+                self.services.append(data)
+            except ValueError:
+                _log.warning(
+                    f"Couldn't find a ServiceInterface class in {mod_name} from discovered_services"
+                )
 
     def store(self, file: Path):
         """
@@ -118,14 +132,25 @@ class _ServerOptions:
 
         kwargs = {}
 
+        services_field = None
+        # Store the config options first.
         for field in fields(_ServerOptions):
             try:
                 # Don't save volttron_home within the config file.
-                if field.name != 'volttron_home':
+                if field.name not in ('volttron_home', 'services'):
                     parser.set("volttron", field.name.replace('_', '-'),
                                str(getattr(self, field.name)))
             except configparser.NoOptionError:
                 pass
+
+        parser.add_section('services')
+        for sd in self.services:
+            parser.set("services", sd.identity, sd.klass_path)
+
+            if sd.args:
+                parser.add_section(sd.klass_path)
+                for arg, value in sd.args:
+                    parser.set(sd.klass_path, arg, value)
 
         parser.write(file.open("w"))
 
@@ -187,7 +212,18 @@ class _ServerRuntime:
     def __init__(self, opts: ServerOptions):
         self._opts = opts
         self._cred_manager_cls = None    #  get_class(*split_module_class(opts.credential_manager))
-        self._message_bus_cls = get_class(*split_module_class(opts.message_bus))
+
+        try:
+            mod_name, klass = split_module_class(opts.message_bus)
+            self._message_bus_cls = get_class(mod_name, klass)
+        except (ValueError, AttributeError):
+            if opts.message_bus.startswith("volttron.messagebus"):
+                mod_name = opts.message_bus
+            else:
+                mod_name = "volttron.messagebus." + opts.message_bus
+            self._message_bus_cls = get_subclasses(mod_name, MessageBusInterface)[0]
+
+        #self._message_bus_cls = get_class(*split_module_class(opts.message_bus))
         self._cred_generator_cls = None    # get_class(*split_module_class(opts.credential_generator))
         self._auth_service_cls = None    # opts.auth_service
         # # There does not have to be an auth service.
@@ -226,10 +262,6 @@ class _ObjectManager:
         self._runtime = runtime
         from volttron.server.serviceloader import discover_services
         self._loaded = {}
-
-        if self._runtime.options.service_config.exists():
-            self._loaded = yaml.safe_load(self._runtime.options.service_config.read_text().replace(
-                "$volttron_home", os.environ['VOLTTRON_HOME']))
 
         self._namespace = self._loaded.get('namespace', 'volttron.services')
         self._discovered_services = discover_services(self._namespace)

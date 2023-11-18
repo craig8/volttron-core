@@ -39,7 +39,6 @@ pyzmq = "^25.0.2"
 pytest = "^7.3.1"
 mock = "^5.0.2"
 pre-commit = "^3.2.2"
-yapf = "^0.33.0"
 toml = "^0.10.2"
 isort = "^5.10.1"
 safety = "^1.10.3"
@@ -47,6 +46,7 @@ mypy = "^0.942"
 coverage = "^6.3.2"
 Sphinx = "^4.5.0"
 sphinx-rtd-theme = "^1.0.0"
+yapf = "^0.40.2"
 
 
 [build-system]
