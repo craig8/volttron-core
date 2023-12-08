@@ -1,25 +1,36 @@
 from __future__ import annotations
+from collections import OrderedDict
 
 import configparser
+from configparser import ConfigParser
 import logging
 import os
 import socket
 from configparser import ConfigParser
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import List, TYPE_CHECKING
+from typing import List, TYPE_CHECKING, Type
 
 from volttron.server.aip import AIPplatform
 from volttron.types.message_bus import MessageBusInterface
 from volttron.types.service import ServiceInterface
 from volttron.utils import get_class
-from volttron.utils.dynamic_helper import get_subclasses
+from volttron.utils.dynamic_helper import get_subclasses, get_subclasses_of_classpath
 
 if TYPE_CHECKING:
     from volttron.server.server_options import ServerRuntime
     from volttron.server.serviceloader import ServiceData
 
 _log = logging.getLogger(__name__)
+
+
+class MultiOrderedDict(OrderedDict):
+
+    def __setitem__(self, key, value):
+        if isinstance(value, list) and key in self:
+            self[key].extend(value)
+        else:
+            super().__setitem__(key, value)
 
 
 def split_module_class(full_class):
@@ -73,9 +84,10 @@ class _ServerOptions:
     :ivar service_config: The Path to the service config file for loading services into the context.
     :vartype service_service: Path
     """
-    volttron_home: Path | str = field(default=Path("~/.volttron").expanduser())
+    volttron_home: Path | str = field(
+        default=Path(os.environ.get('VOLTTRON_HOME', "~/.volttron")).expanduser())
     instance_name: str = None
-    address: str = "tcp://127.0.0.1:22916"
+    address: List[str] = field(default_factory=list)
     agent_isolation_mode: bool = False
     # Module that holds the zmq based classes, though we shorten it assumeing
     # it's in volttron.messagebus
@@ -103,6 +115,11 @@ class _ServerOptions:
         if self.instance_name is None:
             self.instance_name = socket.gethostname()
 
+        if isinstance(self.address, str):
+            self.address = [self.address]
+        elif not self.address:
+            self.address = ["tcp://127.0.0.1:22916"]
+
         namespace = "volttron.services"
         discovered_services = discover_services(namespace)
 
@@ -126,7 +143,7 @@ class _ServerOptions:
         :param file: The path to the file where the configuration options should be stored.
         :type file: Union[pathlib.Path, str]
         """
-        parser = ConfigParser()
+        parser = ConfigParser(dict_type=MultiOrderedDict, strict=False)
 
         parser.add_section("volttron")
 
@@ -138,8 +155,15 @@ class _ServerOptions:
             try:
                 # Don't save volttron_home within the config file.
                 if field.name not in ('volttron_home', 'services'):
-                    parser.set("volttron", field.name.replace('_', '-'),
-                               str(getattr(self, field.name)))
+                    # More than one address can be present so we must be careful
+                    # with it.
+                    if field.name == 'address':
+                        parser.set("volttron", "address", "\n".join(getattr(self, field.name)))
+                        # for v in getattr(self, field.name):
+                        #     parser.set("volttron", "address", v)
+                    else:
+                        parser.set("volttron", field.name.replace('_', '-'),
+                                   str(getattr(self, field.name)))
             except configparser.NoOptionError:
                 pass
 
@@ -177,7 +201,7 @@ class _ServerOptions:
             file = Path(file)
 
         if file.exists():
-            parser = ConfigParser()
+            parser = ConfigParser(dict_type=MultiOrderedDict, strict=False)
             parser.read(file)
 
             kwargs = {}
@@ -191,6 +215,8 @@ class _ServerOptions:
                         value = eval(value)
                     elif field.name == 'service_config' or field.name == 'volttron_home':
                         value = Path(value)
+                    elif field.name == 'address':
+                        value = value.split('\n')
                     kwargs[field.name] = value
                 except configparser.NoOptionError:
                     pass
@@ -207,25 +233,42 @@ class _ServerOptions:
 ServerOptions = _ServerOptions.from_file()
 
 
-class _ServerRuntime:
+class ServerRuntime:
+
+    def __new__(cls, extra):
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(ServerRuntime, cls).__new__(cls)
+        return cls.instance
 
     def __init__(self, opts: ServerOptions):
         self._opts = opts
         self._cred_manager_cls = None    #  get_class(*split_module_class(opts.credential_manager))
+        self._messagebus_cls: MessageBusInterface = None
+        subclasses = get_subclasses_of_classpath(
+            f"{MessageBusInterface.__module__}.{MessageBusInterface.__name__}")
 
-        try:
-            mod_name, klass = split_module_class(opts.message_bus)
-            self._message_bus_cls = get_class(mod_name, klass)
-        except (ValueError, AttributeError):
-            if opts.message_bus.startswith("volttron.messagebus"):
-                mod_name = opts.message_bus
-            else:
-                mod_name = "volttron.messagebus." + opts.message_bus
-            self._message_bus_cls = get_subclasses(mod_name, MessageBusInterface)[0]
+        for sc in subclasses:
+            if sc.get_config_name() == opts.message_bus:
+                self._messagebus_cls = sc
+                break
+
+            print(sc)
+
+        if not self._messagebus_cls:
+            raise RuntimeError("No Messagebus found to start!")
+        # try:
+        #     mod_name, klass = split_module_class(opts.message_bus)
+        #     self._message_bus_cls = get_class(mod_name, klass)
+        # except (ValueError, AttributeError):
+        #     if opts.message_bus.startswith("volttron.messagebus"):
+        #         mod_name = opts.message_bus
+        #     else:
+        #         mod_name = "volttron.messagebus." + opts.message_bus
+        #     self._message_bus_cls = get_subclasses(mod_name, MessageBusInterface)[0]
 
         #self._message_bus_cls = get_class(*split_module_class(opts.message_bus))
-        self._cred_generator_cls = None    # get_class(*split_module_class(opts.credential_generator))
-        self._auth_service_cls = None    # opts.auth_service
+        #self._cred_generator_cls = None    # get_class(*split_module_class(opts.credential_generator))
+        #self._auth_service_cls = None    # opts.auth_service
         # # There does not have to be an auth service.
         # if opts.auth_service is not None:
         #     self._auth_service_cls = get_class(*split_module_class(opts.auth_service))
@@ -250,10 +293,19 @@ class _ServerRuntime:
     def auth_service_cls(self):
         return self._auth_service_cls
 
+    @classmethod
+    def create(cls, options: _ServerOptions = None) -> ServerRuntime:
+        if not hasattr(cls, 'instance'):
+            if options is None:
+                options = ServerOptions
+            ServerRuntime(options)
 
-ServerRuntime = _ServerRuntime(ServerOptions)
-AIP = AIPplatform(runtime=ServerRuntime)
-AIP.setup()
+        return cls.instance
+
+
+# reals = ServerRuntime.create()
+# AIP = AIPplatform(runtime=ServerRuntime)
+# AIP.setup()
 
 
 class _ObjectManager:
