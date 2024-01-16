@@ -47,7 +47,7 @@ from volttron.utils import (ClientContext as cc, get_aware_utc_now)
 #from volttron.client import get_home
 #from volttron.client.agent.utils import get_aware_utc_now
 from volttron.client.vip.agent import Agent
-from volttron.client import build_vip_address_string
+#from volttron.client import build_vip_address_string
 
 __version__ = "1.0.3"
 __author__ = "Craig Allwardt <craig.allwardt@pnnl.gov>"
@@ -55,81 +55,81 @@ __author__ = "Craig Allwardt <craig.allwardt@pnnl.gov>"
 DEFAULT_TIMEOUT = 30
 
 
-class Connection(object):
+class Connection:
     """A class that manages a connection to a peer and/or server."""
 
-    def __init__(self,
-                 address,
-                 peer=None,
-                 publickey=None,
-                 secretkey=None,
-                 serverkey=None,
-                 volttron_home=None,
-                 instance_name=None,
-                 message_bus=None,
-                 **kwargs):
+    # def __init__(self, connection_parameters: ConnectionParameters):
+    #             #  address,
+    #             #  peer=None,
+    #             #  publickey=None,
+    #             #  secretkey=None,
+    #             #  serverkey=None,
+    #             #  volttron_home=None,
+    #             #  instance_name=None,
+    #             #  message_bus=None,
+    #             #  **kwargs):
 
-        self._log = logging.getLogger(__name__)
-        self._log.debug("Connection: {}, {}, {}, {}, {}, {}".format(address, peer, publickey,
-                                                                    secretkey, serverkey,
-                                                                    message_bus))
-        self._address = address
-        self._peer = peer
-        self._serverkey = None
-        if peer is None:
-            self._log.warning("Peer is non so must be passed in call method.")
-        self.volttron_home = volttron_home
+    #     self._log = logging.getLogger(__name__)
+    #     self._log.debug("Connection: {}, {}, {}, {}, {}, {}".format(address, peer, publickey,
+    #                                                                 secretkey, serverkey,
+    #                                                                 message_bus))
+    #     self._address = address
+    #     self._peer = peer
+    #     self._serverkey = None
+    #     if peer is None:
+    #         self._log.warning("Peer is non so must be passed in call method.")
+    #     self.volttron_home = volttron_home
 
-        if self.volttron_home is None:
-            self.volttron_home = os.path.abspath(cc.get_volttron_home())
+    #     if self.volttron_home is None:
+    #         self.volttron_home = os.path.abspath(cc.get_volttron_home())
 
-        if address.startswith("ipc"):
-            full_address = address
-        else:
-            parsed = urllib.parse.urlparse(address)
-            if parsed.scheme == "tcp":
-                qs = urllib.parse.parse_qs(parsed.query)
-                self._log.debug("QS IS: {}".format(qs))
-                if "serverkey" in qs:
-                    self._serverkey = qs.get("serverkey")
-                else:
-                    self._serverkey = serverkey
+    #     if address.startswith("ipc"):
+    #         full_address = address
+    #     else:
+    #         parsed = urllib.parse.urlparse(address)
+    #         if parsed.scheme == "tcp":
+    #             qs = urllib.parse.parse_qs(parsed.query)
+    #             self._log.debug("QS IS: {}".format(qs))
+    #             if "serverkey" in qs:
+    #                 self._serverkey = qs.get("serverkey")
+    #             else:
+    #                 self._serverkey = serverkey
 
-                # Handle case when the address has all the information in it.
-                if "serverkey" in qs and "publickey" in qs and "secretkey" in qs:
-                    full_address = address
-                else:
-                    full_address = build_vip_address_string(
-                        vip_root=address,
-                        serverkey=serverkey,
-                        publickey=publickey,
-                        secretkey=secretkey,
-                    )
-            elif parsed.scheme == "ipc":
-                full_address = address
-            else:
-                raise AttributeError("Invalid address type specified. ipc or tcp accepted.")
+    #             # Handle case when the address has all the information in it.
+    #             if "serverkey" in qs and "publickey" in qs and "secretkey" in qs:
+    #                 full_address = address
+    #             else:
+    #                 full_address = build_vip_address_string(
+    #                     vip_root=address,
+    #                     serverkey=serverkey,
+    #                     publickey=publickey,
+    #                     secretkey=secretkey,
+    #                 )
+    #         elif parsed.scheme == "ipc":
+    #             full_address = address
+    #         else:
+    #             raise AttributeError("Invalid address type specified. ipc or tcp accepted.")
 
-        self._server = Agent(address=full_address,
-                             volttron_home=self.volttron_home,
-                             enable_store=False,
-                             reconnect_interval=1000,
-                             instance_name=instance_name,
-                             message_bus=message_bus,
-                             **kwargs)
-        # TODO the following should work as well, but doesn't.  Not sure why!
-        # self._server = Agent(address=address, serverkey=serverkey,
-        #                      secretkey=secretkey, publickey=publickey,
-        #                      enable_store=False,
-        #                      volttron_home=self.volttron_home, **kwargs)
-        self._greenlet = None
-        self._connected_since = None
-        self._last_publish = None
-        self._last_publish_failed = False
-        self._last_rpc_call = None
+    #     self._server = Agent(address=full_address,
+    #                          volttron_home=self.volttron_home,
+    #                          enable_store=False,
+    #                          reconnect_interval=1000,
+    #                          instance_name=instance_name,
+    #                          message_bus=message_bus,
+    #                          **kwargs)
+    #     # TODO the following should work as well, but doesn't.  Not sure why!
+    #     # self._server = Agent(address=address, serverkey=serverkey,
+    #     #                      secretkey=secretkey, publickey=publickey,
+    #     #                      enable_store=False,
+    #     #                      volttron_home=self.volttron_home, **kwargs)
+    #     self._greenlet = None
+    #     self._connected_since = None
+    #     self._last_publish = None
+    #     self._last_publish_failed = False
+    #     self._last_rpc_call = None
 
-        # Make the actual attempt to connect to the server.
-        self.is_connected()
+    #     # Make the actual attempt to connect to the server.
+    #     self.is_connected()
 
     @property
     def serverkey(self):

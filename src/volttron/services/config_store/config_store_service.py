@@ -48,7 +48,7 @@ import gevent
 from gevent.lock import Semaphore
 
 from volttron.client.vip.agent import RPC, Agent, Core, Unreachable, VIPError
-from volttron.types.service import ServiceInterface
+from volttron.types.decorators import service
 from volttron.utils import (format_timestamp, get_aware_utc_now, jsonapi, parse_json_config)
 from volttron.utils.jsonrpc import MethodNotFound, RemoteError
 from volttron.utils.persistance import PersistentDict
@@ -110,7 +110,11 @@ def process_raw_config(config_string, config_type="raw"):
     raise ValueError("Unsupported configuration type.")
 
 
-class ConfigStoreService(ServiceInterface):
+@service
+class ConfigStoreService(Agent):
+
+    class Meta:
+        identity = "platform.config"
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -121,6 +125,12 @@ class ConfigStoreService(ServiceInterface):
 
         self.store = {}
         self.store_path = os.path.join(os.environ["VOLTTRON_HOME"], "configuration_store")
+
+    def requires(self) -> list[str] | None:
+        return None
+
+    def start(**kwargs):
+        pass
 
     @Core.receiver("onsetup")
     def _setup(self, sender, **kwargs):

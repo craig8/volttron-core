@@ -61,9 +61,9 @@ class AgentStartupConfig:
     logger: logging.Logger = None
 
 
-class Agent(object):
+class Agent:
 
-    class Subsystems(object):
+    class Subsystems:
 
         def __init__(self, owner: Agent, core: Core, agent_startup_config: AgentStartupConfig,
                      **kwargs):
@@ -84,13 +84,16 @@ class Agent(object):
             # self.auth = Auth(owner, core, self.rpc_subsys)
 
     def get_core_from_environment(self, **kwargs):
-        from volttron.utils import get_subclasses
-        agent_core = os.environ.get('AGENT_CORE')
+        subclasses = Core.__subclasses__()
 
-        assert agent_core
-        module, class_name = agent_core.rsplit('.', 1)
-        cls = get_class(module, class_name)
-        return cls(owner=self, **kwargs)
+        if not subclasses:
+            raise RuntimeError("No subclasses of Core are in the environment")
+
+        # TODO: Handle tie-breaker perhaps using environmental variable?
+        if len(subclasses) > 1:
+            raise RuntimeError("More than one subclass of Core present on python path")
+
+        return subclasses[0](owner=self, **kwargs)
 
     # def build_client_context(self, **kwargs):
     #     from volttron.utils import get_subclasses, get_class

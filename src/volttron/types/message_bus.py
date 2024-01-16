@@ -1,88 +1,133 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Set, Optional
+from pathlib import Path
+from abc import abstractmethod
+from volttron.types.auth.authentication import Authenticator
+from volttron.types.auth.authorization import Authorizer
+from volttron.types.auth.credentials import CredentialManager
 
-import gevent
-from gevent import Greenlet
-
-from volttron.types.credentials import Credentials, CredentialsManager
-from volttron.types.errors import NotFoundError
-from volttron.types.parameter import Parameter
-
-
-@dataclass
-class ConnectionParameters:
-    """
-    The ConnectionParameters is a base class for required parameters to
-    connect to the MessageBus.  MessageBus implementors should inherit
-    this class and add parameters that are required for the implementation.
-    """
-    address: str
+from volttron.types.message import Message
 
 
 @dataclass
 class MessageBusParameters:
-    credential_manager: Optional[CredentialsManager] = None
-    auth_service: Optional["AuthService"] = None
-    parameters: Set[Parameter] = field(default_factory=set)
+    connection_parameters: ConnectionParameters
+    credential_manager: CredentialManager = None
+    authorizer: Authorizer = None
+    authenticator: Authenticator = None
 
-    def add_parameter(self, parameter):
-        self.parameters.add(parameter)
+    def has_auth(self) -> bool:
+        """Returns true if auth_service is set to something besides None
 
-    def get_parameter(self, key: str) -> Parameter:
-        for param in self.parameters:
-            if param.key == key:
-                return param
-        raise NotFoundError(key, self)
+        :return: true if auth_service set
+        :rtype: bool
+        """
+        return self.auth_service is not None
+
+    @staticmethod
+    def load_from_config_file(config_file: str | Path = None,
+                              section: str = "volttron") -> MessageBusParameters:
+        """
+        Attempt to load the parameters from the configuration file.  The standard
+        configuration file is assumed with the section volttron.  If the config_file
+        is not specified then assumes the config_file within the VOLTTRON_HOME directory
+        if that is not found then will return an MessageBusParameters object with
+        no parameters sepcified.
+
+        :param config_file: A path to the config file to load, defaults to None
+        :type config_file: str | Path, optional
+        :param section: A section in the config file to load parameters from.
+        :type section: str
+        """
+        params = MessageBusParameters()
+        return params
+
+
+instance: MessageBusInterface = None
 
 
 class MessageBusInterface:
     """
-    The MessageBusInterface is the main server available for connecting to.
+    The MessageBusInterface is an abstract base class that defines the interface for a message bus.
+    It uses the Singleton metaclass to ensure that only one instance of any class that inherits from it can be created.
+
+    Subclasses must implement the `get_default_parameters`, `get_config_name`, `stop` and `start` methods.
+
+    :method get_default_parameters: This method should return a default set of parameters for use when starting the message bus.
+    :method get_config_name: This method should return the name of the message bus. This is used to validate what is started in the config file during dynamic loading of the message bus.
+    :method start: This method should start the information flow between volttron and the message bus.
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.params = None
-        self.auth_service = None
+    @abstractmethod
+    def build_parameters(self, runtime: "ServerRuntime") -> MessageBusParameters:
+        pass
 
-    def set_parameters(self, params: MessageBusParameters):
-        self.params = params
-
-    def initialize(self, **kwargs):
-        raise NotImplementedError()
-
-    def start(self):
+    @abstractmethod
+    def get_config_name(cls) -> str:
         """
-        Start the information flow between volttron and the message bus.  this
-        method should start/connect to the implemnted messsage bus.  For zmq
-        this means starting a process and then having the server ready for connections from
-        agents.  Whereas in mqtt this will mean connecting the server to the broker and then
-        modifying channels with specific access controls etc. 
-        """
-        raise NotImplementedError()
+        Retrieve the name of the messagebus.  This is used to validate what
+        is started in the config file during dynamic loading of the messagebus.
 
+        :return: A unique name of messagebus
+        :rtype: str
+        """
+        pass
+
+    @abstractmethod
+    def start(self, params: MessageBusParameters):
+        """
+        Start the information flow between volttron and the message bus.
+
+        :param params: Parameters to be used when starting the message bus.
+        :type params: MessageBusParameters
+        """
+        pass
+
+    @abstractmethod
     def stop(self):
-        raise NotImplementedError()
-
-    def get_service_credentials(self) -> Credentials:
         """
-
-        :return:
+        Stop the information flow between volttron and the message bus.
         """
-        raise NotImplementedError()
+        pass
 
-    def get_server_credentials(self) -> Credentials:
-        """
-        This method is used in the initial setup of the platform and the server side services.
-        The credentials of the server should be separate from the agents connecting to the platform.
+    @classmethod
+    def instance(cls) -> MessageBusInterface:
+        global instance
+        if not instance:
+            from volttron.server.server_options import ServerRuntime
+            instance = (ServerRuntime.get_message_bus_cls())()
+        return instance
 
-        :return:
-            A Credentials volttron.types.credentials.Credentials
-        """
-        raise NotImplementedError()
+    @abstractmethod
+    def is_running(self) -> bool:
+        pass
 
-    @staticmethod
-    def get_default_parameters() -> MessageBusParameters:
-        raise NotImplementedError()
+    @abstractmethod
+    def send_vip_message(self, message: Message):
+        pass
 
+    @abstractmethod
+    def receive_vip_message(self) -> Message:
+        pass
 
+    # def get_service_credentials(self) -> Credentials:
+    #     """
+
+    #     :return:
+    #     """
+    #     raise NotImplementedError()
+
+    # def get_server_credentials(self) -> Credentials:
+    #     """
+    #     This method is used in the initial setup of the platform and the server side services.
+    #     The credentials of the server should be separate from the agents connecting to the platform.
+
+    #     :return:
+    #         A Credentials volttron.types.credentials.Credentials
+    #     """
+    #     raise NotImplementedError()
+
+    # @staticmethod
+    # def get_default_parameters() -> MessageBusParameters:
+    #     raise NotImplementedError()

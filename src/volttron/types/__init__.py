@@ -1,27 +1,30 @@
-from typing import List
-
-from volttron.types.agent_factory import AgentFactory
-from volttron.types.auth.authentication import (Authentication, AuthenticationError)
-from volttron.types.auth.authorization import Authorization, AuthorizationError
-from volttron.types.auth.credentials import (ClientCredentials, Credentials, CredentialStore,
+from volttron.types.auth.credentials import (Credentials, CredentialStore, PKICredentials,
                                              IdentityAlreadyExists, IdentityNotFound,
                                              InMemoryCredentialStore)
-from volttron.types.connection_context import (BaseConnection, ConnectionContext,
-                                               ConnectionParameters)
-from volttron.types.credentials import (CredentialsError, CredentialsExistError,
-                                        CredentialsGenerator, CredentialsManager)
-from volttron.types.factories import Factories
+from volttron.types.auth.authorization import Authorization, AuthorizationError, Authorizer
+from volttron.types.auth.authentication import (AuthenticationError)
+from volttron.types.connection_context import (BaseConnection, ConnectionContext)
+from volttron.types.credentials import (CredentialsError, CredentialsExistError)
+from volttron.types.decorators import messagebus
+from volttron.types.message import Message
 from volttron.types.message_bus import (MessageBusInterface, MessageBusParameters)
 from volttron.types.peer_notifier import PeerNotifier
 #from volttron.types.server_config import ServiceConfigs
 from volttron.types.server_context import ServerContext
-from volttron.types.service import ServiceInterface
+from volttron.types.singleton import Singleton
 
-__all__: List[str] = [
-    "Credentials", "ServiceInterface", "MessageBusParameters", "MessageBusInterface",
+from volttron.types.decorators import (messagebus, connection, service, authorizer, authenticator,
+                                       credential_store, auth_create_hook, auth_add_hook,
+                                       auth_remove_hook, auth_list_hook)
+
+__all__: list[str] = [
+    "messagebus", "Credentials", "MessageBusParameters", "MessageBusInterface",
     "ConnectionContext", "ConnectionParameters", "ServerContext", "AgentFactory", "ServiceConfigs",
     "Factories", "BaseConnection", "Credentials", "CredentialsGenerator", "CredentialsManager",
     "CredentialsError", "CredentialsExistError", "PeerNotifier", "ClientCredentials",
     "CredentialStore", "IdentityAlreadyExists", "IdentityNotFound", "InMemoryCredentialStore",
-    "Authorization", "Authentication", "AuthorizationError", "AuthenticationError"
+    "Authorization", "Authentication", "AuthorizationError", "AuthenticationError", "Parameter",
+    "Message", "MessageBusParameters", "MessageBusInterface", "ConnectionParameters", "Singleton",
+    "Authorizer", "messagebus", "connection", "service", "authorizer", "authenticator",
+    "credential_store", "auth_create_hook", "auth_add_hook", "auth_remove_hook", "auth_list_hook"
 ]

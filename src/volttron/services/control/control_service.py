@@ -64,8 +64,8 @@ from volttron.client.vip.agent import Core, Unreachable, VIPError
 from volttron.client.vip.agent.subsystems.query import Query
 from volttron.server import aip as aipmod
 from volttron.server import server_argparser as config
-from volttron.server.aip import AIPplatform
-from volttron.types.server_options import AIP
+#from volttron.server.aip import AIPplatform
+#from volttron.server.server_options import AIP
 from volttron.types.service import ServiceInterface
 from volttron.utils import ClientContext as cc
 from volttron.utils import (get_address, get_aware_utc_now, jsonapi, wait_for_volttron_shutdown)

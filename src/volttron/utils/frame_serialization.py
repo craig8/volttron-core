@@ -1,56 +1,17 @@
-# -*- coding: utf-8 -*- {{{
-# vim: set fenc=utf-8 ft=python sw=4 ts=4 sts=4 et:
-#
-# Copyright 2020, Battelle Memorial Institute.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# This material was prepared as an account of work sponsored by an agency of
-# the United States Government. Neither the United States Government nor the
-# United States Department of Energy, nor Battelle, nor any of their
-# employees, nor any jurisdiction or organization that has cooperated in the
-# development of these materials, makes any warranty, express or
-# implied, or assumes any legal liability or responsibility for the accuracy,
-# completeness, or usefulness or any information, apparatus, product,
-# software, or process disclosed, or represents that its use would not infringe
-# privately owned rights. Reference herein to any specific commercial product,
-# process, or service by trade name, trademark, manufacturer, or otherwise
-# does not necessarily constitute or imply its endorsement, recommendation, or
-# favoring by the United States Government or any agency thereof, or
-# Battelle Memorial Institute. The views and opinions of authors expressed
-# herein do not necessarily state or reflect those of the
-# United States Government or any agency thereof.
-#
-# PACIFIC NORTHWEST NATIONAL LABORATORY operated by
-# BATTELLE for the UNITED STATES DEPARTMENT OF ENERGY
-# under Contract DE-AC05-76RL01830
-# }}}
-
+from __future__ import annotations
 from json import JSONDecodeError
 import logging
-from typing import List, Any
-from zmq.sugar.frame import Frame
+from typing import Any
 import struct
 
 from volttron.utils import jsonapi
 
 _log = logging.getLogger(__name__)
 
-# python 3.8 formatting errors with utf-8 encoding.  The ISO-8859-1 is equivilent to latin-1
 ENCODE_FORMAT = "ISO-8859-1"
 
 
-def deserialize_frames(frames: List[Frame]) -> List:
+def deserialize_frames(frames: list[bytes]) -> list:
     decoded = []
 
     for x in frames:
@@ -65,12 +26,11 @@ def deserialize_frames(frames: List[Frame]) -> List:
         elif isinstance(x, str):
             decoded.append(x)
         elif x is not None:
-            # _log.debug(f'x is {x}')
             if x == {}:
                 decoded.append(x)
                 continue
             try:
-                d = x.bytes.decode(ENCODE_FORMAT)
+                d = x.decode(ENCODE_FORMAT)
             except UnicodeDecodeError as e:
                 _log.error(f"Unicode decode error: {e}")
                 decoded.append(x)
@@ -82,17 +42,15 @@ def deserialize_frames(frames: List[Frame]) -> List:
     return decoded
 
 
-def serialize_frames(data: List[Any]) -> List[Frame]:
+def serialize_frames(data: list[Any]) -> list[bytes]:
     frames = []
 
     for x in data:
         try:
             if isinstance(x, list) or isinstance(x, dict):
-                frames.append(Frame(jsonapi.dumps(x).encode(ENCODE_FORMAT)))
-            elif isinstance(x, Frame):
-                frames.append(x)
+                frames.append(jsonapi.dumps(x).encode(ENCODE_FORMAT))
             elif isinstance(x, bytes):
-                frames.append(Frame(x))
+                frames.append(x)
             elif isinstance(x, bool):
                 frames.append(struct.pack("?", x))
             elif isinstance(x, int):
@@ -100,15 +58,13 @@ def serialize_frames(data: List[Any]) -> List[Frame]:
             elif isinstance(x, float):
                 frames.append(struct.pack("f", x))
             elif x is None:
-                frames.append(Frame(x))
+                frames.append(None)
             else:
-                frames.append(Frame(x.encode(ENCODE_FORMAT)))
+                frames.append(x.encode(ENCODE_FORMAT))
         except TypeError as e:
             import sys
-
             sys.exit(0)
         except AttributeError as e:
             import sys
-
             sys.exit(0)
     return frames

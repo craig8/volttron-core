@@ -52,7 +52,7 @@ import uuid
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from volttron.types.server_options import ServerRuntime
+    from volttron.server import ServerRuntime
 
 # import requests
 import gevent
@@ -395,8 +395,8 @@ class SecureUserActions:
                 raise RuntimeError(stderr)
 
 
-class AIPplatform(object):
-    """Manages the main workflow of receiving and sending agents."""
+class AIPplatform:
+    """Manages the platform and runtime execution of VOLTTRON."""
 
     def __init__(self, runtime: ServerRuntime):
         self.runtime = runtime

@@ -5,7 +5,7 @@ import tempfile
 import pytest
 
 
-def create_volttron_home(monkeypatch) -> str:
+def create_volttron_home() -> str:
     """
     Creates a VOLTTRON_HOME temp directory for use within a testing context.
     This function will also set the VOLTTRON_HOME directory such that it
@@ -26,26 +26,34 @@ def create_volttron_home(monkeypatch) -> str:
     volttron_home = os.path.join(volttron_home, "volttron_home")
     os.makedirs(volttron_home)
 
-    monkeypatch.setenv("VOLTTRON_HOME", volttron_home)
-
     return volttron_home
 
 
 @pytest.fixture(scope="function")
-def create_volttron_home_fun_scope(monkeypatch):
+def create_volttron_home_fun_scope() -> str:
 
-    volttron_home = create_volttron_home(monkeypatch)
+    volttron_home = create_volttron_home()
+    before_fun_fixture = os.environ.get("VOLTTRON_HOME")
+    os.environ['VOLTTRON_HOME'] = volttron_home
 
     yield volttron_home.strip()
 
+    if before_fun_fixture:
+        os.environ['VOLTTRON_HOME'] = before_fun_fixture
+    else:
+        del os.environ['VOLTTRON_HOME']
     shutil.rmtree(volttron_home, ignore_errors=True)
 
 
 @pytest.fixture(scope="module")
-def create_volttron_home_mod_scope(monkeypatch):
+def create_volttron_home_mod_scope():
 
-    volttron_home = create_volttron_home(monkeypatch)
+    volttron_home = create_volttron_home()
+    before_mod_fixture = os.environ.get("VOLTTRON_HOME")
 
     yield volttron_home.strip()
-
+    if before_mod_fixture:
+        os.environ['VOLTTRON_HOME']
+    else:
+        del os.environ['VOLTTRON_HOME']
     shutil.rmtree(volttron_home, ignore_errors=True)

@@ -6,6 +6,13 @@ class AuthorizationError(Exception):
     pass
 
 
+class Authorizer:
+
+    @abstractmethod
+    def is_authorized(self, role: str, action: str, resource: any, **kwargs) -> bool:
+        pass
+
+
 class Authorization(ABC):
     """
     Interface for authorization objects.
@@ -34,23 +41,23 @@ class Authorization(ABC):
         :type role: str
         """
         pass
-    
+
     @abstractmethod
     def assign_role(self, role: str, identifier: str):
         pass
-    
+
     @abstractmethod
     def unassign_role(self, role: str, identifer: str):
         pass
-    
+
     @abstractmethod
     def unassign_all_roles(self, identifier: str):
         pass
-    
+
     @abstractmethod
     def get_permissions(self, role: str = None, identifier: str = None) -> List[str]:
         pass
-    
+
     @abstractmethod
     def get_roles(self, identifer: str = None) -> List[str]:
         pass

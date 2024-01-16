@@ -36,11 +36,14 @@
 # under Contract DE-AC05-76RL01830
 # }}}
 
+from __future__ import annotations
+from abc import abstractmethod
 import heapq
 import inspect
 import logging
 import signal
 import threading
+import uuid
 import warnings
 import weakref
 from contextlib import contextmanager
@@ -54,10 +57,14 @@ import time
 # from volttron.client.keystore import KeyStore, KnownHostsStore
 # from volttron.utils.rmq_mgmt import RabbitMQMgmt
 from volttron import utils
+from volttron.types.message import Message
+from volttron.types.auth.credentials import Credentials
+from volttron.utils.dynamic_helper import get_subclasses_of_classpath
 from .decorators import annotate, annotations, dualmethod
 from .dispatch import Signal
 from .errors import VIPError
 
+from blinker import signal as blinker_signal
 # from volttron.utils import ConnectionContext as cc, get_address
 # from .. import router
 
@@ -68,6 +75,71 @@ from .errors import VIPError
 __all__ = ["BasicCore", "Core", "killing"]
 
 _log = logging.getLogger(__name__)
+
+connection_failed_event = blinker_signal("connection_failed_check")
+hello_response_event = blinker_signal("hello_response")
+
+
+@connection_failed_event.connect
+def connection_failed_check(core: Core):
+
+    # if hello_response_event.wait(10.0):
+    #     return
+    _log.error("No response to hello message")
+    _log.error("Shutting down agent.")
+
+    core.stop(timeout=10.0)
+
+
+def hello(core: Core, connection: Connection) -> Message:
+    """_summary_
+
+    :param core: _description_
+    :type core: Core
+    :param connection: _description_
+    :type connection: Connection
+    :return: _description_
+    :rtype: Message
+    """
+    # Send hello message to VIP router to confirm connection with
+    # platform
+    # state.ident = ident = "connect.hello.%d" % state.count
+    # state.count += 1
+    # self.spawn(connection_failed_check)
+    message = Message(recipient="", subsystem='hello', id="connect.hello.0", args=["hello"])
+
+    connection.send_vip_message(message)
+    try:
+        with gevent.spawn(connection.receive_vip_message) as result:
+            msg = result.get(timeout=10)
+            hello_response_event.send(core,
+                                      sender=msg.sender,
+                                      version=msg.args[-2],
+                                      identity=msg.args[-1])
+    except gevent.Timeout:
+        connection_failed_event.send(core)
+    return msg
+    #self.connection.send_vip_object(message)
+
+
+@hello_response_event.connect
+def hello_response(core: Core, sender, version="", router="", identity=""):
+    _log.info("Connected to platform: "
+              "router: {} version: {} identity: {}".format(router, version, identity))
+    _log.debug("Running onstart methods.")
+    # The server knows the caller as this identity so we have to use that for
+    # routing to it.
+    core.identity = identity
+    core.onstart.sendby(core.link_receiver, core)
+    core.configuration.sendby(core.link_receiver, core)
+
+    # self.onstart.sendby(self.link_receiver, self)
+    # self.configuration.sendby(self.link_receiver, self)
+    # if running_event is not None:
+    #     running_event.set()
+
+
+#return connection_failed_check, hello, hello_response
 
 
 class Periodic(object):    # pylint: disable=invalid-name
@@ -214,15 +286,21 @@ class BasicCore(object):
 
         self.onstart.connect(start_periodics)
 
+    @abstractmethod
     def loop(self, running_event):
-        # pre-setup
-        yield
-        # pre-start
-        yield
-        # pre-stop
-        yield
-        # pre-finish
-        yield
+        """Concrete Core subclass must implement this method.
+
+        The method should yield at least once to allow the agent to
+        perform any setup before starting the main loop.  The method
+        should yield again to allow the agent to perform any setup. The
+        method should yield again to allow the agent to perform any stopping
+        actions.  The method should yield again to allow the agent to exit
+        cleanly.
+
+        :param running_event: _description_
+        :type running_event: _type_
+        """
+        raise NotImplementedError()
 
     def link_receiver(self, receiver, sender, **kwargs):
         greenlet = gevent.spawn(receiver, sender, **kwargs)
@@ -480,10 +558,12 @@ class Core(BasicCore):
     # to false to keep from blocking. AuthService does this.
     delay_running_event_set = True
 
-    def __init__(
-        self,
-        **kwargs
-    ):
+    def __init__(self,
+                 identity: str = None,
+                 connection_parameters: ConnectionParameters = None,
+                 credential: Credential = None,
+                 connection: Connection = None,
+                 **kwargs):
 
         # These signals need to exist before calling super().__init__()
         self.onviperror = Signal()
@@ -497,9 +577,11 @@ class Core(BasicCore):
 
         self._version = kwargs.pop("version", "1.0")
 
+        self.credential = credential
+        self.parameters = connection_parameters
         #
         # self.address = address if address is not None else get_address()
-        # self.identity = str(identity) if identity is not None else str(uuid.uuid4())
+        self.identity = str(identity) if identity is not None else str(uuid.uuid4())
         # self.agent_uuid = agent_uuid
         # self.publickey = publickey
         # self.secretkey = secretkey
@@ -509,7 +591,19 @@ class Core(BasicCore):
         # self.instance_name = instance_name
         # self.messagebus = messagebus
         self.subsystems = {"error": self.handle_error}
-        # self.__connected = False
+        self.__connected = False
+
+        if connection is not None and connection_parameters is not None:
+            raise ValueError("Only one of connection or connection_parameters should be set.")
+        elif connection_parameters is None and connection is None:
+            raise ValueError("One of connection or connection_parameters must be set.")
+
+        if credential is not None:
+            assert credential.identity == identity, "Identity must match  identifier."
+
+        self.connection_parameters = connection_parameters
+        # TODO: Create a connection if not provided.
+        self.connection = connection
         # self._version = version
         # self.socket = None
         # self.connection = None
@@ -609,6 +703,7 @@ class Core(BasicCore):
             _log.info("Connected to platform: "
                       "router: {} version: {} identity: {}".format(router, version, identity))
             _log.debug("Running onstart methods.")
+            self.core.identity = identity
             hello_response_event.set()
             self.onstart.sendby(self.link_receiver, self)
             self.configuration.sendby(self.link_receiver, self)
@@ -617,7 +712,24 @@ class Core(BasicCore):
 
         return connection_failed_check, hello, hello_response
 
+    def loop(self, running_event):
 
+        if self.connection is None:
+            klass_connection = get_subclasses_of_classpath("volttron.types.parameter.Connection")
+            if len(klass_connection) == 0:
+                raise RuntimeError("No connection class found.")
+            self.connection: Connection = klass_connection[0](self.connection_parameters)
+            self.connection.connect()
+        # pre-setup
+        yield
+        hello(self, self.connection)
+
+        # pre-start
+        yield
+        # pre-stop
+        yield
+        # pre-finish
+        yield
 
 
 @contextmanager

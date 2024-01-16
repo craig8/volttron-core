@@ -1,4 +1,5 @@
 from __future__ import annotations
+import argparse
 from collections import OrderedDict
 
 import configparser
@@ -9,16 +10,15 @@ import socket
 from configparser import ConfigParser
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import List, TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Type
 
-from volttron.server.aip import AIPplatform
-from volttron.types.message_bus import MessageBusInterface
-from volttron.types.service import ServiceInterface
-from volttron.utils import get_class
-from volttron.utils.dynamic_helper import get_subclasses, get_subclasses_of_classpath
+import gevent
+from volttron.types.decorators import get_messagebus_class, get_messagebus_instance, get_service_classes, get_service_instance, get_service_startup_order
+from volttron.types.protocols import MessageBusProtocol
+
+from volttron.types.singleton import Singleton
 
 if TYPE_CHECKING:
-    from volttron.server.server_options import ServerRuntime
     from volttron.server.serviceloader import ServiceData
 
 _log = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def split_module_class(full_class):
 
 
 @dataclass
-class _ServerOptions:
+class ServerOptions(Singleton):
     """
     A data class representing the configuration options for a Volttron platform server.
 
@@ -87,13 +87,14 @@ class _ServerOptions:
     volttron_home: Path | str = field(
         default=Path(os.environ.get('VOLTTRON_HOME', "~/.volttron")).expanduser())
     instance_name: str = None
-    address: List[str] = field(default_factory=list)
+    address: list[str] = field(default_factory=list)
     agent_isolation_mode: bool = False
     # Module that holds the zmq based classes, though we shorten it assumeing
     # it's in volttron.messagebus
     message_bus: str = "zmq"
+    auth_enabled: bool = True
 
-    services: List[ServiceData] = field(default_factory=list)
+    services: list[ServiceData] = field(default_factory=list)
 
     def __post_init__(self):
         """
@@ -103,7 +104,7 @@ class _ServerOptions:
 
         If `instance_name` is None, it is set to the hostname of the machine.
         """
-        from volttron.server.serviceloader import discover_services, ServiceData
+        from volttron.server.serviceloader import ServiceData
 
         if os.environ.get('VOLTTRON_HOME'):
             self.volttron_home = Path(os.environ.get('VOLTTRON_HOME')).expanduser()
@@ -121,20 +122,20 @@ class _ServerOptions:
             self.address = ["tcp://127.0.0.1:22916"]
 
         namespace = "volttron.services"
-        discovered_services = discover_services(namespace)
+        #discovered_services = discover_services(namespace)
 
-        for mod_name in discovered_services:
+        # for mod_name in discovered_services:
 
-            try:
-                cls = get_subclasses(mod_name, ServiceInterface)[0]
-                # Use platform as the default for identities.
-                identity = mod_name.replace("volttron.services", "platform")
-                data = ServiceData(mod_name, identity)
-                self.services.append(data)
-            except ValueError:
-                _log.warning(
-                    f"Couldn't find a ServiceInterface class in {mod_name} from discovered_services"
-                )
+        #     try:
+        #         cls = get_subclasses(mod_name, ServiceInterface)[0]
+        #         # Use platform as the default for identities.
+        #         identity = mod_name.replace("volttron.services", "platform")
+        #         data = ServiceData(mod_name, identity)
+        #         self.services.append(data)
+        #     except ValueError:
+        #         _log.warning(
+        #             f"Couldn't find a ServiceInterface class in {mod_name} from discovered_services"
+        #         )
 
     def store(self, file: Path):
         """
@@ -151,7 +152,7 @@ class _ServerOptions:
 
         services_field = None
         # Store the config options first.
-        for field in fields(_ServerOptions):
+        for field in fields(ServerOptions):
             try:
                 # Don't save volttron_home within the config file.
                 if field.name not in ('volttron_home', 'services'):
@@ -181,7 +182,7 @@ class _ServerOptions:
     @staticmethod
     def from_file(file: Path | str = None):
         """
-        Creates a `_ServerOptions` instance from a file.
+        Creates a `ServerOptions` instance from a file.
 
         If `file` is None, the default file location ('$VOLTTRON_HOME/config') is used.
 
@@ -206,7 +207,7 @@ class _ServerOptions:
 
             kwargs = {}
 
-            for field in fields(_ServerOptions):
+            for field in fields(ServerOptions):
                 try:
                     value = parser.get(section="volttron", option=field.name.replace('_', '-'))
                     if value == 'None':
@@ -221,86 +222,78 @@ class _ServerOptions:
                 except configparser.NoOptionError:
                     pass
 
-            options = _ServerOptions(**kwargs)
+            options = ServerOptions(**kwargs)
         else:
-            options = _ServerOptions()
+            options = ServerOptions()
             options.store(file)
 
         return options
 
 
-# Global load of options from a config file.
-ServerOptions = _ServerOptions.from_file()
-
-
 class ServerRuntime:
+    _instance: ServerRuntime = None
 
-    def __new__(cls, extra):
-        if not hasattr(cls, 'instance'):
-            cls.instance = super(ServerRuntime, cls).__new__(cls)
-        return cls.instance
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = object.__new__(cls)
+        return cls._instance
 
-    def __init__(self, opts: ServerOptions):
-        self._opts = opts
-        self._cred_manager_cls = None    #  get_class(*split_module_class(opts.credential_manager))
-        self._messagebus_cls: MessageBusInterface = None
-        subclasses = get_subclasses_of_classpath(
-            f"{MessageBusInterface.__module__}.{MessageBusInterface.__name__}")
+    def __init__(self, config_options: ServerOptions, cmdline_args: argparse.Namespace):
 
-        for sc in subclasses:
-            if sc.get_config_name() == opts.message_bus:
-                self._messagebus_cls = sc
-                break
+        self._config_options = config_options
+        self._cmdline_opts = cmdline_args
+        self._cred_manager_cls = None
+        self._messagebus_instance: MessageBusProtocol = None
+        #  get_class(*split_module_class(opts.credential_manager))
+        # self._messagebus_cls: MessageBusInterface = None
+        # self._messagebus_instance: MessageBusInterface = None
+        # subclasses = get_subclasses_of_classpath(
+        #     f"{MessageBusInterface.__module__}.{MessageBusInterface.__name__}")
 
-            print(sc)
+        # for sc in subclasses:
+        #     if sc.get_config_name() == opts.message_bus:
+        #         self._messagebus_cls = sc
+        #         break
 
-        if not self._messagebus_cls:
-            raise RuntimeError("No Messagebus found to start!")
-        # try:
-        #     mod_name, klass = split_module_class(opts.message_bus)
-        #     self._message_bus_cls = get_class(mod_name, klass)
-        # except (ValueError, AttributeError):
-        #     if opts.message_bus.startswith("volttron.messagebus"):
-        #         mod_name = opts.message_bus
-        #     else:
-        #         mod_name = "volttron.messagebus." + opts.message_bus
-        #     self._message_bus_cls = get_subclasses(mod_name, MessageBusInterface)[0]
+        # if not self._messagebus_cls:
+        #     raise RuntimeError("No Messagebus found to start!")
 
-        #self._message_bus_cls = get_class(*split_module_class(opts.message_bus))
-        #self._cred_generator_cls = None    # get_class(*split_module_class(opts.credential_generator))
-        #self._auth_service_cls = None    # opts.auth_service
-        # # There does not have to be an auth service.
-        # if opts.auth_service is not None:
-        #     self._auth_service_cls = get_class(*split_module_class(opts.auth_service))
+        # self._messagebus_instance = self._messagebus_cls()
+
+    def get_messagebus_class(self) -> type[MessageBusProtocol]:
+        return get_messagebus_class()
 
     @property
     def options(self) -> ServerOptions:
-        return self._opts
+        return self._config_options
 
-    # @property
-    # def credential_generator_cls(self) -> Type[CredentialsGenerator]:
-    #     return self._cred_generator_cls
+    def start_messagebus(self) -> MessageBusProtocol:
+        if self._messagebus_instance is None:
+            mb = get_messagebus_instance()
+            mb.start(self)
+            self._messagebus_instance = mb
+        return self._messagebus_instance
 
-    # @property
-    # def credential_manager_cls(self) -> Type[CredentialsManager]:
-    #     return self._cred_manager_cls
+    def run_server(self) -> None:
+        greenlets = []
 
-    @property
-    def message_bus_cls(self) -> Type[MessageBusInterface]:
-        return self._message_bus_cls
+        for lookup in get_service_startup_order():
+            instance = get_service_instance(lookup)
+            _log.debug(f"Starting {lookup}")
+            event = gevent.event.Event()
+            task = gevent.spawn(instance.core.run, event)
+            event.wait()
+            del event
+            greenlets.append(task)
 
-    @property
-    def auth_service_cls(self):
-        return self._auth_service_cls
+        # If one exits then shutdown the server.
+        gevent.wait(greenlets, count=1)
 
-    @classmethod
-    def create(cls, options: _ServerOptions = None) -> ServerRuntime:
-        if not hasattr(cls, 'instance'):
-            if options is None:
-                options = ServerOptions
-            ServerRuntime(options)
+    def shutdown_messagebus(self):
+        if self._messagebus_instance:
+            self._messagebus_instance.stop()
 
-        return cls.instance
+        self._messagebus_instance = None
 
 
 # reals = ServerRuntime.create()
@@ -312,27 +305,27 @@ class _ObjectManager:
 
     def __init__(self, runtime: ServerRuntime) -> None:
         self._runtime = runtime
-        from volttron.server.serviceloader import discover_services
-        self._loaded = {}
+        #from volttron.server.serviceloader import discover_services
+        # self._loaded = {}
 
-        self._namespace = self._loaded.get('namespace', 'volttron.services')
-        self._discovered_services = discover_services(self._namespace)
-        self._plugin_map = {}
-        self._config_map = {}
-        self._identity_map = {}
-        self._instances = {}
-        self._objects = {}
+        # self._namespace = self._loaded.get('namespace', 'volttron.services')
+        # self._discovered_services = discover_services(self._namespace)
+        # self._plugin_map = {}
+        # self._config_map = {}
+        # self._identity_map = {}
+        # self._instances = {}
+        # self._objects = {}
 
-        for mod_name in self._discovered_services:
-            try:
-                cls = get_subclasses(mod_name, ServiceInterface)[0]
-                identity = mod_name.replace("services", "platform")
-                self._identity_map[mod_name] = identity
-                self._plugin_map[mod_name] = cls
-                self._config_map[mod_name] = self._loaded.get(mod_name, {})
+        # for mod_name in self._discovered_services:
+        #     try:
+        #         cls = get_subclasses(mod_name, ServiceInterface)[0]
+        #         identity = mod_name.replace("services", "platform")
+        #         self._identity_map[mod_name] = identity
+        #         self._plugin_map[mod_name] = cls
+        #         self._config_map[mod_name] = self._loaded.get(mod_name, {})
 
-            except ValueError:
-                continue
+        #     except ValueError:
+        #         continue
 
     def init_services(self):
         import inspect

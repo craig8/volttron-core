@@ -1,0 +1,15 @@
+@startuml "Package Layout"
+
+interface AuthServiceInterface {
+
+}
+
+interface MessageBusInterface {
+
+}
+
+class PlatformWrapper {
+    {static} create(MessageBusInterface mb, AuthServiceInterface if) -> PlatformWrapper
+}
+
+@enduml

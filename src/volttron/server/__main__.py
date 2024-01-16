@@ -47,13 +47,24 @@ from logging import handlers
 from pathlib import Path
 
 import gevent
-import yaml
 from gevent import monkey
 
 #from volttron.types.parameter import Parameter
 
 monkey.patch_socket()
 monkey.patch_ssl()
+
+os.environ['VOLTTRON_SERVER'] = "1"
+from volttron.loader import load_dir
+
+volttron_path = Path(__file__).parent.parent
+# This doesn't reload it, because it's already been loaded.  This allows us
+# access to the paths associated with the other modules.
+volttron_pkg = importlib.import_module("volttron")
+
+# Loop over paths that aren't in this package
+for pth in filter(lambda p: p != volttron_path.parent.as_posix, volttron_pkg.__path__):
+    load_dir('volttron', Path(pth))
 
 from volttron.client.known_identities import (CONTROL, CONTROL_CONNECTION, PLATFORM_WEB)
 from volttron.server import aip
@@ -63,16 +74,19 @@ from volttron.server.log_actions import (
 #from volttron.types.credentials import (CredentialsError, CredentialsGenerator, CredentialsManager)
 #from volttron.types.factories import Factories
 from volttron.types.message_bus import MessageBusInterface
-from volttron.server.server_options import (ObjectManager, ServerOptions, ServerRuntime)
+from volttron.types.server_options import (ObjectManager, ServerOptions, ServerRuntime)
 # Link to the volttron-client library
 # import gevent.monkey
 # import gevent.threading as threading
 #
 from volttron.utils import ClientContext as cc
-from volttron.utils import (get_class, get_subclasses, get_version, store_message_bus_config)
+from volttron.utils import (get_class, get_subclasses, get_version, store_message_bus_config,
+                            get_subclasses_of_classpath)
 from volttron.utils.dynamic_helper import get_all_subclasses
 # TODO Keystore is only good for zmq??
 from volttron.utils.persistance import load_create_store
+
+from volttron.types.decorators import core, get_messagebus_class, get_messagebus_core_class
 
 # from volttron.utils.keystore import get_random_key
 #
@@ -151,6 +165,7 @@ def start_volttron_process(runtime: ServerRuntime):
     args options.
     """
     logging.basicConfig(level=logging.DEBUG)
+
     # if isinstance(opts, dict):
     #     opts = type("Options", (), opts)()
     #     # vip_address is meant to be a list so make it so.
@@ -298,23 +313,21 @@ def start_volttron_process(runtime: ServerRuntime):
 
     # Instantiate instances of the Authorization and Authentication classes that can be used
     # by the AuthService
-    if ServerOptions.authentication_class is not None and ServerOptions.authorization_class is not None:
-        ObjectManager.create_instance(ServerOptions.authentication_class, "authenticator")
-        ObjectManager.create_instance(ServerOptions.authorization_class, "authorizer")
-        has_auth = True
+    # if ServerOptions.authentication_class is not None and ServerOptions.authorization_class is not None:
+    #     ObjectManager.create_instance(ServerOptions.authentication_class, "authenticator")
+    #     ObjectManager.create_instance(ServerOptions.authorization_class, "authorizer")
+    #     has_auth = True
 
-    _log.debug(f"Available Services: {ObjectManager.get_available_services()}")
+    # _log.debug(f"Available Services: {ObjectManager.get_available_services()}")
 
-    ObjectManager.init_services()
+    # ObjectManager.init_services()
 
-    # Retrieve the config store service as it is first to load even before the message bus.
-    config_store = ObjectManager.get_service("volttron.platform.config_store")
+    # # Retrieve the config store service as it is first to load even before the message bus.
+    # config_store = ObjectManager.get_service("volttron.platform.config_store")
 
     if has_auth:
         # Determine message bus and setup
         auth_service = ObjectManager.get_service("volttron.services.auth")
-
-    mb: MessageBusInterface = ObjectManager.create_instance(runtime.message_bus_cls)
 
     # mb_params = runtime.message_bus_cls.get_default_parameters()
     # mb_params.credential_manager = cred_manager
@@ -323,42 +336,45 @@ def start_volttron_process(runtime: ServerRuntime):
     # _log.info("Loaded Message Bus Parameters")
     # mb = runtime.message_bus_cls()
     # mb.set_parameters(mb_params)
-    _log.info(f"Starting MessageBus {mb.__class__.__name__}")
-    mb.start()
+    mb = runtime.start_messagebus()
+    _log.info(f"Started MessageBus {mb.__class__.__name__}")
 
-    _log.debug("Starting volttron.services.config_store")
-    event = gevent.event.Event()
-    config_store_task = gevent.spawn(config_store.core.run, event)
-    event.wait()
-    del event
-
-    spawned_greenlets.append(config_store_task)
-
-    _log.debug("Starting volttron.services.auth")
-    # event = gevent.event.Event()
-    # auth_task = gevent.spawn(auth_service.core.run, event)
-    # event.wait()
-    # del event
-    # spawned_greenlets.append(auth_task)
-
-    start_up_services = ("volttron.services.config_store", "volttron.services.auth")
-
-    for service_name in ObjectManager.get_available_services():
-        if service_name not in start_up_services:
-            instance = ObjectManager.get_service(
-                service_name)    #  service_config.get_service_instance(service_name)
-            if instance is not None:
-                _log.debug(f"Starting {service_name}")
-                event = gevent.event.Event()
-                task = gevent.spawn(instance.core.run, event)
-                event.wait()
-                del event
-                spawned_greenlets.append(task)
-
-    _log.info("********************************************Startup Complete")
-    gevent.wait(spawned_greenlets, count=1)
+    runtime.run_server()
 
     mb.stop()
+
+    # # event = gevent.event.Event()
+    # # config_store_task = gevent.spawn(config_store.core.run, event)
+    # # event.wait()
+    # # del event
+
+    # # spawned_greenlets.append(config_store_task)
+
+    # _log.debug("Starting volttron.services.auth")
+    # # event = gevent.event.Event()
+    # # auth_task = gevent.spawn(auth_service.core.run, event)
+    # # event.wait()
+    # # del event
+    # # spawned_greenlets.append(auth_task)
+
+    # start_up_services = ("volttron.services.config_store", "volttron.services.auth")
+
+    # for service_name in ObjectManager.get_available_services():
+    #     if service_name not in start_up_services:
+    #         instance = ObjectManager.get_service(
+    #             service_name)    #  service_config.get_service_instance(service_name)
+    #         if instance is not None:
+    #             _log.debug(f"Starting {service_name}")
+    #             event = gevent.event.Event()
+    #             task = gevent.spawn(instance.core.run, event)
+    #             event.wait()
+    #             del event
+    #             spawned_greenlets.append(task)
+
+    # _log.info("********************************************Startup Complete")
+    # gevent.wait(spawned_greenlets, count=1)
+
+    # mb.stop()
 
     # # TODO Replace with module level zmq that holds all of the zmq bits in order to start and
     # #  run the message bus regardless of whether it's zmq or rmq.
@@ -741,34 +757,26 @@ def build_arg_parser(options: ServerOptions) -> argparse.ArgumentParser:
         default=logging.WARNING,
         help="set logger verboseness",
     )
-    parser.add_argument("--agent-core",
-                        type=str,
-                        default=options.agent_core,
-                        help="The core agent to use when creating an agent.")
     parser.add_argument("--messagebus",
                         type=str,
                         default=options.message_bus,
                         help="The message bus to use during startup.")
-    parser.add_argument("--auth-service",
-                        type=str,
-                        default=options.auth_service,
-                        help="The auth service to use for authentication of clients.")
-
-    parser.add_argument("--service-config",
-                        type=str,
-                        default=options.service_config,
-                        help="Location of the service configuration file.")
-    parser.add_argument("--authentication-class",
-                        type=str,
-                        default=options.authentication_class,
-                        help="Class used with the AuthService for authentication")
-    parser.add_argument("--authorization-class",
-                        type=str,
-                        default=options.authorization_class,
-                        help="Class used with the AuthService for authorization")
+    # parser.add_argument("--auth-service",
+    #                     type=str,
+    #                     default=options.auth_service,
+    #                     help="The auth service to use for authentication of clients.")
+    # parser.add_argument("--authentication-class",
+    #                     type=str,
+    #                     default=options.authentication_class,
+    #                     help="Class used with the AuthService for authentication")
+    # parser.add_argument("--authorization-class",
+    #                     type=str,
+    #                     default=options.authorization_class,
+    #                     help="Class used with the AuthService for authorization")
     # parser.add_argument(
     #    '--volttron-home', env_var='VOLTTRON_HOME', metavar='PATH',
     #    help='VOLTTRON configuration directory')
+    parser.add_argument("--auth-enabled", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--show-config", action="store_true", help=argparse.SUPPRESS)
     parser.add_help_argument()
     parser.add_version_argument(version="%(prog)s " + str(get_version()))
@@ -859,12 +867,16 @@ def main():
 
     :return:
     """
-    volttron_home = os.path.normpath(
-        config.expandall(os.environ.get("VOLTTRON_HOME", "~/.volttron")))
-    ServerOptions.volttron_home = volttron_home
-    os.environ["VOLTTRON_HOME"] = volttron_home
+    volttron_home = Path(os.environ.get("VOLTTRON_HOME", "~/.volttron")).expanduser()
+    os.environ["VOLTTRON_HOME"] = volttron_home.as_posix()
 
-    parser = build_arg_parser(ServerOptions)
+    # Create a default ServerOptions() object that will be used to parse the command line
+    # options.
+    server_options = ServerOptions()
+    assert server_options.volttron_home == volttron_home
+
+    # Create an argparse parser using the server options.
+    parser = build_arg_parser(server_options)
 
     # Parse and expand options
     args = sys.argv[1:]
@@ -875,7 +887,7 @@ def main():
     logging.getLogger().setLevel(logging.NOTSET)
     opts = parser.parse_args(args)
 
-    start_volttron_process(ServerRuntime)
+    start_volttron_process(ServerRuntime(config_options=server_options, cmdline_args=opts))
 
 
 def _main():

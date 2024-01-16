@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Type
 
 import yaml
-from volttron.types.credentials import Credentials
+from volttron.types.auth.credentials import Credentials
 #from volttron.types.server_options import ServerRuntime
 from volttron.types.service import ServiceInterface
 from volttron.utils import get_subclasses

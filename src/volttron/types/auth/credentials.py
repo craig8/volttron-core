@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 
@@ -16,77 +18,105 @@ class InvalidCredentials(Exception):
     pass
 
 
-class Credentials(ABC):
-    """
-    Interface for credentials objects.
-
-    Implementations of this interface are responsible for providing the credentials required
-    for authentication.
-
-    """
-
-    @abstractmethod
-    def get_identifier(self) -> str:
-        pass
-
-    @abstractmethod
-    def get_credentials(self) -> Dict[str, Any]:
-        """
-        Get the credentials.
-
-        :return: A dictionary containing the credentials required for authentication.
-        :rtype: Dict[str, Any]
-        """
-        pass
-
-    @staticmethod
-    @abstractmethod
-    def create(identifier: str, **kwargs) -> Credentials:
-        pass
+@dataclass(frozen=True)
+class Credentials:
+    identity: str
 
 
-class PublicCredentials(Credentials):
-
-    def __init__(self, identifier: str, **kwargs) -> None:
-        self._identifier = identifier
-        self._kwargs = kwargs
-        for k, v in kwargs.items():
-            if not isinstance(k, str):
-                raise InvalidCredentials(f"Key must be string not {type(k)}")
-
-    def get_credentials(self) -> Dict[str, Any]:
-        return self._kwargs
-
-    def get_identifier(self) -> str:
-        return self._identifier
-
-    @staticmethod
-    def create(identifier: str, **kwargs) -> Credentials:
-        return PublicCredentials(identifier, **kwargs)
+@dataclass(frozen=True)
+class PKICredentials(Credentials):
+    public: str
+    secret: str
 
 
-class ClientCredentials(Credentials):
+class CredentialManager:
 
-    def __init__(self, identifier: str, **kwargs) -> None:
-        self._identifier = identifier
+    def __init__(self, cred_list: Credential) -> None:
+        self._store = InMemoryCredentialStore(cred_list)
 
-        for k, v in kwargs.items():
-            if not isinstance(k, str):
-                raise ValueError(f"Item {k} is not a string. String are required for keys")
+    def add(self, credential: Credential):
+        self._store.add(credential)
 
-        self._credentials = kwargs
+    def remove(self, identity):
+        self._store.delete_credential(identity)
 
-    def get_identifier(self) -> str:
-        return self._identifier
+    def get(self, identity) -> Credential:
+        self._store.retrieve_credential(identity)
 
-    def get_credentials(self) -> Dict[str, Any]:
-        return self._credentials
+
+class ClientCredential(Credentials):
+    pass
+
+
+# class Credentials(ABC):
+#     """
+#     Interface for credentials objects.
+
+#     Implementations of this interface are responsible for providing the credentials required
+#     for authentication.
+
+#     """
+
+#     @abstractmethod
+#     def get_identifier(self) -> str:
+#         pass
+
+#     @abstractmethod
+#     def get_credentials(self) -> Dict[str, Any]:
+#         """
+#         Get the credentials.
+
+#         :return: A dictionary containing the credentials required for authentication.
+#         :rtype: Dict[str, Any]
+#         """
+#         pass
+
+#     @staticmethod
+#     @abstractmethod
+#     def create(identifier: str, **kwargs) -> Credentials:
+#         pass
+
+# class PublicCredentials(Credentials):
+
+#     def __init__(self, identifier: str, **kwargs) -> None:
+#         self._identifier = identifier
+#         self._kwargs = kwargs
+#         for k, v in kwargs.items():
+#             if not isinstance(k, str):
+#                 raise InvalidCredentials(f"Key must be string not {type(k)}")
+
+#     def get_credentials(self) -> Dict[str, Any]:
+#         return self._kwargs
+
+#     def get_identifier(self) -> str:
+#         return self._identifier
+
+#     @staticmethod
+#     def create(identifier: str, **kwargs) -> Credentials:
+#         return PublicCredentials(identifier, **kwargs)
+
+# class ClientCredentials(Credentials):
+
+#     def __init__(self, identifier: str, **kwargs) -> None:
+#         self._identifier = identifier
+
+#         for k, v in kwargs.items():
+#             if not isinstance(k, str):
+#                 raise ValueError(f"Item {k} is not a string. String are required for keys")
+
+#         self._credentials = kwargs
+
+#     def get_identifier(self) -> str:
+#         return self._identifier
+
+#     def get_credentials(self) -> Dict[str, Any]:
+#         return self._credentials
 
 
 class CredentialStore(ABC):
 
     @abstractmethod
-    def store_credentials(self, identity: str, credentials: Credentials) -> None:
+    def store_credential(self, identity: str, credential: list[Credential]) -> None:
         """
         Store credentials for an identity.
 
@@ -99,7 +129,7 @@ class CredentialStore(ABC):
         pass
 
     @abstractmethod
-    def retrieve_credentials(self, identity: str) -> Credentials:
+    def retrieve_credential(self, identity: str) -> Credential:
         """
         Retrieve the credentials for an identity.
 
@@ -112,7 +142,7 @@ class CredentialStore(ABC):
         pass
 
     @abstractmethod
-    def delete_credentials(self, identity: str) -> None:
+    def delete_credential(self, identity: str) -> None:
         """
         Delete the credentials for an identity.
 
@@ -125,25 +155,33 @@ class CredentialStore(ABC):
 
 class InMemoryCredentialStore(CredentialStore):
 
-    def __init__(self) -> None:
-        self._store: Dict[str, Credentials] = {}
+    def __init__(self, credentials: list[Credential] = None) -> None:
+        self._store: dict[str, Credential] = {}
+        for cred in credentials:
+            self.store_credential(cred.identity, cred)
 
     def __len__(self) -> int:
         return len(self._store)
 
-    def store_credentials(self, identity: str, credentials: Credentials) -> None:
+    def add(self, credential: Credential) -> None:
+        self.store_credential(credential.identity, credential)
+
+    def store_credential(self, identity: str, credential: Credential) -> None:
         if identity in self._store:
             raise IdentityAlreadyExists(f"Identity: {identity}")
-        self._store[identity] = credentials
+        self._store[identity] = credential
 
-    def retrieve_credentials(self, identity: str) -> Optional[Any]:
+    def retrieve_credential(self, identity: str) -> Optional[Any]:
         try:
             return self._store[identity]
         except KeyError:
             raise IdentityNotFound(f"Identity {identity}")
 
-    def delete_credentials(self, identity: str) -> None:
+    def delete_credential(self, identity: str) -> None:
         try:
             del self._store[identity]
         except KeyError:
             raise IdentityNotFound(f"Identity {identity}")
+
+    def list(self) -> list[Credential]:
+        return [deepcopy(x) for x in self._store.values()]

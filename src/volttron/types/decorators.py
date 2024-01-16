@@ -8,9 +8,12 @@ includes a function for logging traces.
 import logging
 import inspect
 from typing import TypeVar
+from typing import Protocol
+from volttron.types.protocols import (ConnectionProtocol, MessageBusProtocol, ServiceProtocol,
+                                      RequiresServiceIdentityProtocol)
 
 
-def factory_registration(name: str):
+def factory_registration(name: str, protocol: Protocol = None):
     """
     Create a factory registration function.
 
@@ -24,13 +27,24 @@ def factory_registration(name: str):
     """
 
     def register(cls):
+        lookup_key = None
         if hasattr(cls, 'Meta'):
-            name = cls.Meta.name
+            # Meta can either have a name or an identity, but not both.
+            # We use either one of the values as a lookup for the register.
+            if hasattr(cls.Meta, 'name') and hasattr(cls.Meta, 'identity'):
+                raise ValueError("Only name or identity can be specified in Meta.")
+            elif hasattr(cls.Meta, 'name'):
+                lookup_key = cls.Meta.name
+            elif hasattr(cls.Meta, 'identity'):
+                lookup_key = cls.Meta.identity
 
-        print(f"Registering {cls.__name__} as a {name}")
-        if name in register.registry:
-            raise ValueError(f"Name {name} already in register for {register.name}.")
-        register.registry[name] = cls
+        if protocol is not None and not isinstance(cls, protocol):
+            raise ValueError(f"{cls.__name__} doesn't implement {protocol.__name__}")
+
+        print(f"Registering {cls.__name__} as a {lookup_key}")
+        if lookup_key in register.registry:
+            raise ValueError(f"{lookup_key} already in register for {register.name}.")
+        register.registry[lookup_key] = cls
         return cls
 
     register.name = name
@@ -38,10 +52,11 @@ def factory_registration(name: str):
     return register
 
 
-messagebus = factory_registration("messagebus")
+messagebus = factory_registration("messagebus", protocol=MessageBusProtocol)
 core = factory_registration("core")
-connection = factory_registration("connection")
-service = factory_registration("service")
+connection = factory_registration("connection", protocol=ConnectionProtocol)
+service = factory_registration("service",
+                               protocol=ServiceProtocol | RequiresServiceIdentityProtocol)
 authorizer = factory_registration("authorizer")
 authenticator = factory_registration("authenticator")
 credential_store = factory_registration("credential_store")
@@ -87,7 +102,7 @@ def logtrace(func: callable, *args, **kwargs):
 
 def __get_create_instance_from_factory__(instances, registration, name: str = None):
     if not registration.registry:
-        raise ValueError(f"No {registration.name} is currently registered")
+        raise ValueError(f"No {name} is currently registered")
 
     if name is None and len(messagebus.registry) > 1:
         raise ValueError(f"Can't figure out which messagebus to return.")
@@ -125,7 +140,7 @@ __messagebus__: dict[str, object] = {}
 
 
 @logtrace
-def get_messagebus_instance(name=None) -> object:
+def get_messagebus_instance(name=None) -> MessageBusProtocol:
     return __get_create_instance_from_factory__(__messagebus__, messagebus, name)
 
 
@@ -196,3 +211,61 @@ def get_authenticator_class(name=None) -> type:
 @logtrace
 def get_credential_store_class(name=None) -> type:
     return __get_class_from_factory__(credential_store, name)
+
+
+# @logtrace
+# def get_service_classes() -> dict[str, type]:
+#     return service.values())
+
+
+@logtrace
+def get_services() -> dict[str, type]:
+    return service.registry
+
+
+@logtrace
+def get_services_without_requires() -> list[type]:
+    return list(filter(lambda x: not hasattr(x.Meta, "requires"), service.registry.values()))
+
+
+@logtrace
+def get_services_with_requires() -> list[type]:
+    return list(filter(lambda x: hasattr(x.Meta, "requires"), service.registry.values()))
+
+
+@logtrace
+def get_service_class(identity: str) -> type:
+    return service.registry[identity]
+
+
+__service_instances__: dict[str, object] = {}
+
+
+@logtrace
+def get_service_instance(identity: str) -> object:
+    return __get_create_instance_from_factory__(__service_instances__, service, identity)
+
+
+@logtrace
+def get_service_startup_order() -> list[str]:
+    ordered: list[str] = ["platform.config"]
+
+    for lookup, cls in service.registry.items():
+        if lookup not in ('platform.config', ):
+            ordered.append(lookup)
+
+    return ordered
+
+
+#    is_required_by: dict[str, list[str]] = {}
+
+# for k, r in service.registry.items():
+#     is_required_by[k] = r
+
+# for k, r in service.registry.items():
+#     if hasattr(r, "Meta") and hasattr(r.Meta, "requires"):
+#         if isinstance(r.Meta.requires, str):
+#             r.Meta.requires = [r.Meta.requires]
+
+#         for require in r.Meta.requires:
+#             is_required_by[require].append(k)

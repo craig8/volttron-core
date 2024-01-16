@@ -81,7 +81,7 @@ import gevent.event
 # from volttron.utils.rmq_setup import check_rabbit_status
 # from volttron.platform.agent.utils import is_secure_mode, wait_for_volttron_shutdown
 # from volttron.client.commands.install_agents import add_install_agent_parser
-from volttron.types import Credentials
+#from volttron.types import Credentials
 
 from volttron.utils import ClientContext as cc, get_address
 from volttron.utils import jsonapi
@@ -97,7 +97,8 @@ from volttron.utils import log_to_file
 from volttron.client.known_identities import (
     CONFIGURATION_STORE,
     PLATFORM_HEALTH,
-    AUTH, CONTROL_CONNECTION,
+    AUTH,
+    CONTROL_CONNECTION,
 )
 
 from volttron.client.vip.agent.subsystems.query import Query
@@ -2325,7 +2326,8 @@ def main():
         "-v",
         "--verbose",
         action="store_true",
-        help="list all subsystem rpc_subsys methods in addition to the agent's rpc_subsys methods. If a method "
+        help=
+        "list all subsystem rpc_subsys methods in addition to the agent's rpc_subsys methods. If a method "
         "is specified, display the doc-string associated with the method.",
     )
 

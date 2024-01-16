@@ -1,0 +1,42 @@
+---
+title: Authentication Model
+---
+classDiagram
+    MessageBusInterface <|-- ZmqMessageBus
+    AuthServiceInterface <-- AuthService
+    Authenticator <|-- ZmqAuthenticator
+    Authorizer <|-- ZmqAuthorizer
+
+    Credential <|-- PublicCredential
+    PublicCredential <|-- SecretCredential
+
+
+    class Credential
+    Credential : +str identity
+
+    class PublicCredential
+    PublicCredential : +str public
+
+    class SecretCredential
+    SecretCredential : +str secret
+
+
+
+    class CredentialManager
+    CredentialManager : +add(secretCred) None
+    CredentialManager : +remove(identity) None
+    CredentialManager : +get(identity) PublicCredential
+
+
+
+    class MessageBusInterface
+    class ZmqMessageBus
+    class Authorizer
+    class Authenticator
+
+    class ZmqAuthenticator
+
+    class ZmqAuthorizer
+
+    class PlatformWrapper
+    PlatformWrapper : +create(MessageBusInterface, AuthServiceInterface)

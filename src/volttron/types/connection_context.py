@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-from volttron.types.message_bus import ConnectionParameters
-
 
 class BaseConnection:
     """
@@ -15,17 +13,17 @@ class ConnectionContext:
     """
     Base class for any connection to a message bus.
     """
-    def __init__(self, identity: str, params: ConnectionParameters):
-        """
-        Constructor for creating a ConnectionContext object.
+    # def __init__(self, identity: str, params: ConnectionParameters):
+    #     """
+    #     Constructor for creating a ConnectionContext object.
 
-        :param identity:
-            An identity to be used to connect to a MessageBus
-        :param params:
-            An object representing the ConnectionParameters required to connect to a MessageBus
-        """
-        self._identity = identity
-        self._connection_parameters = params
+    #     :param identity:
+    #         An identity to be used to connect to a MessageBus
+    #     :param params:
+    #         An object representing the ConnectionParameters required to connect to a MessageBus
+    #     """
+    #     self._identity = identity
+    #     self._connection_parameters = params
 
     @property
     def identity(self):
