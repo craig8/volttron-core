@@ -21,7 +21,6 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
 """The volttron.utils package contains generic utilities for handling json, storing configurations math
 libraries...and more. """
 
@@ -49,6 +48,7 @@ from volttron.utils.time import (format_timestamp, process_timestamp, parse_time
                                  get_utc_seconds_from_epoch, get_aware_utc_now,
                                  fix_sqlite3_datetime)
 from volttron.utils.version import get_version
+from volttron.utils.logs import logtrace
 
 _log = logging.getLogger(__name__)
 
@@ -91,5 +91,5 @@ __all__: List[str] = [
     "get_aware_utc_now", "get_utc_seconds_from_epoch", "get_address", "deserialize_frames",
     "wait_for_volttron_startup", "normalize_identity", "ClientContext", "format_timestamp",
     "store_message_bus_config", "is_ip_private", "fix_sqlite3_datetime", "vip_main", "get_module",
-    "get_class", "get_subclasses"
+    "get_class", "get_subclasses", "logtrace"
 ]
