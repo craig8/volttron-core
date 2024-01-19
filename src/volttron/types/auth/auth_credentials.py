@@ -16,7 +16,11 @@ class InvalidCredentials(Exception):
     pass
 
 
-@dataclass(frozen=True)
+class CredentialStoreError(Exception):
+    pass
+
+
+@dataclass(frozen=True, kw_only=True)
 class Credentials:
     identity: str
 
@@ -24,7 +28,7 @@ class Credentials:
         return Credentials(identity=identity)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class PKICredentials(Credentials):
     publickey: str
     secretkey: str

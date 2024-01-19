@@ -9,8 +9,10 @@ def test_can_modify_credentials():
     foo_cred = Credentials.create(identity="foo")
     assert foo_cred
 
-    pki_foo = PKICredentials.create(identity="foo", publickey="pkey", secretkey="sec")
+    pki_foo = PKICredentials.create(identity="foo", secretkey="sec", publickey="pkey")
     assert pki_foo
+    assert pki_foo.publickey == "pkey"
+    assert pki_foo.secretkey == "sec"
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         foo_cred.identity = "bar"
