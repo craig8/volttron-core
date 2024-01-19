@@ -19,8 +19,8 @@ repos:
 #  hooks:
 #    - id: autopep8
 
-- repo: https://github.com/craig8/mirrors-yapf
-  rev: b84f670025671a341d0afd2b06b877b195d65c0f  # Use the sha / tag you want to point at
+- repo: https://github.com/google/yapf
+  rev: v0.40.2  # Use the sha / tag you want to point at
   hooks:
   - id: yapf
     name: yapf
@@ -28,3 +28,9 @@ repos:
     entry: yapf
     language: python
     types: [ python ]
+
+- repo: https://github.com/pycqa/isort
+  rev: 5.13.2
+  hooks:
+    - id: isort
+      name: isort (python)
