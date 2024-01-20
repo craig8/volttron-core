@@ -23,8 +23,8 @@
 # }}}
 
 __all__ = [
-    "execute_command", "vip_main", "is_volttron_running", "wait_for_volttron_startup",
-    "wait_for_volttron_shutdown", "start_agent_thread", "isapipe"
+    "execute_command", "vip_main", "is_volttron_running", "wait_for_volttron_startup", "wait_for_volttron_shutdown",
+    "start_agent_thread", "isapipe"
 ]
 
 import logging
@@ -56,16 +56,12 @@ def execute_command(cmds, env=None, cwd=None, logger=None, err_prefix=None) -> s
     :raises RuntimeError: if the return code is not 0 from suprocess.run
     """
 
-    results = subprocess.run(cmds,
-                             env=env,
-                             cwd=cwd,
-                             stderr=subprocess.PIPE,
-                             stdout=subprocess.PIPE)
+    results = subprocess.run(cmds, env=env, cwd=cwd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     if results.returncode != 0:
         err_prefix = err_prefix if err_prefix is not None else "Error executing command"
         err_message = ("\n{}: Below Command failed with non zero exit code.\n"
-                       "Command:{} \nStdout:\n{}\nStderr:\n{}\n".format(
-                           err_prefix, results.args, results.stdout, results.stderr))
+                       "Command:{} \nStdout:\n{}\nStderr:\n{}\n".format(err_prefix, results.args, results.stdout,
+                                                                        results.stderr))
         if logger:
             logger.exception(err_message)
             raise RuntimeError()
@@ -111,15 +107,19 @@ def vip_main(agent_class, identity=None, version="0.1", **kwargs):
 
         config = os.environ.get("AGENT_CONFIG")
         identity = os.environ.get("AGENT_VIP_IDENTITY", identity)
-        publickey = kwargs.pop("publickey", None)
-        if not publickey:
-            publickey = os.environ.get("AGENT_PUBLICKEY")
-        secretkey = kwargs.pop("secretkey", None)
-        if not secretkey:
-            secretkey = os.environ.get("AGENT_SECRETKEY")
-        serverkey = kwargs.pop("serverkey", None)
-        if not serverkey:
-            serverkey = os.environ.get("VOLTTRON_SERVERKEY")
+
+        if identity is None:
+            raise ValueError(f"Agent identity is None")
+
+        # publickey = kwargs.pop("publickey", None)
+        # if not publickey:
+        #     publickey = os.environ.get("AGENT_PUBLICKEY")
+        # secretkey = kwargs.pop("secretkey", None)
+        # if not secretkey:
+        #     secretkey = os.environ.get("AGENT_SECRETKEY")
+        # serverkey = kwargs.pop("serverkey", None)
+        # if not serverkey:
+        #     serverkey = os.environ.get("VOLTTRON_SERVERKEY")
 
         # AGENT_PUBLICKEY and AGENT_SECRETKEY must be specified
         # for the agent to execute successfully.  aip should set these
@@ -220,5 +220,4 @@ def wait_for_volttron_shutdown(vhome, timeout):
         gevent.sleep(1)
         sleep_time += 1
     if sleep_time >= timeout:
-        raise Exception(
-            "Platform shutdown failed. Please check volttron.cfg.log in {}".format(vhome))
+        raise Exception("Platform shutdown failed. Please check volttron.cfg.log in {}".format(vhome))

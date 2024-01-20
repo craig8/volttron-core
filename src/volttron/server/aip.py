@@ -21,7 +21,6 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
 """Component for the instantiation and packaging of agents."""
 
 import errno
@@ -49,14 +48,13 @@ from volttron.utils import (ClientContext as cc, get_utc_seconds_from_epoch, exe
 from ..utils import jsonapi
 from volttron.utils.certs import Certs
 from volttron.utils.identities import is_valid_identity
-from volttron.utils.keystore import KeyStore
 from volttron.client.known_identities import VOLTTRON_CENTRAL_PLATFORM
-from volttron.client.vip.agent import Agent
+#from volttron.client.vip.agent import Agent
 
 # from volttron.platform.agent.utils import load_platform_config, \
 #     get_utc_seconds_from_epoch
 
-from volttron.services.auth.auth_service import AuthFile, AuthEntry, AuthFileEntryAlreadyExists
+#from volttron.services.auth.auth_service import AuthFile, AuthEntry, AuthFileEntryAlreadyExists
 
 # TODO route to wheel_wrap
 # from .packages import UnpackedPackage
@@ -231,8 +229,7 @@ class SecureExecutionEnvironment(object):
             _log.info("stopping agent: stdout {} stderr: {}".format(stdout, stderr))
             if process.returncode != 0:
                 _log.error("Exception stopping agent: stdout {} stderr: {}".format(stdout, stderr))
-                raise RuntimeError("Exception stopping agent: stdout {} stderr: {}".format(
-                    stdout, stderr))
+                raise RuntimeError("Exception stopping agent: stdout {} stderr: {}".format(stdout, stderr))
         return self.process.poll()
 
     def __call__(self, *args, **kwargs):
@@ -286,8 +283,7 @@ class AIPplatform(object):
         user_id_path = os.path.join(agent_dir, "USER_ID")
 
         with open(user_id_path, "w+") as user_id_file:
-            volttron_agent_user = "volttron_{}".format(
-                str(get_utc_seconds_from_epoch()).replace(".", ""))
+            volttron_agent_user = "volttron_{}".format(str(get_utc_seconds_from_epoch()).replace(".", ""))
             _log.info("Creating volttron user {}".format(volttron_agent_user))
             group = "volttron_{}".format(self.instance_name)
             useradd = ["sudo", "useradd", volttron_agent_user, "-r", "-G", group]
@@ -295,8 +291,7 @@ class AIPplatform(object):
             stdout, stderr = useradd_process.communicate()
             if useradd_process.returncode != 0:
                 # TODO alert?
-                raise RuntimeError("Creating {} user failed: {}".format(
-                    volttron_agent_user, stderr))
+                raise RuntimeError("Creating {} user failed: {}".format(volttron_agent_user, stderr))
             user_id_file.write(volttron_agent_user)
         return volttron_agent_user
 
@@ -311,15 +306,12 @@ class AIPplatform(object):
         acl_perms = "user:{user}:{perms}".format(user=user, perms=perms)
         permissions_command = ["setfacl", "-m", acl_perms, path]
         _log.debug("PERMISSIONS COMMAND {}".format(permissions_command))
-        permissions_process = subprocess.Popen(permissions_command,
-                                               stdout=subprocess.PIPE,
-                                               stderr=subprocess.PIPE)
+        permissions_process = subprocess.Popen(permissions_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = permissions_process.communicate()
         if permissions_process.returncode != 0:
             _log.error("Set {} permissions on {}, stdout: {}".format(perms, path, stdout))
             # TODO alert?
-            raise RuntimeError("Setting {} permissions on {} failed: {}".format(
-                perms, path, stderr))
+            raise RuntimeError("Setting {} permissions on {} failed: {}".format(perms, path, stderr))
 
     def set_agent_user_permissions(self, volttron_agent_user, agent_uuid, agent_dir):
         name = self.agent_name(agent_uuid)
@@ -333,8 +325,7 @@ class AIPplatform(object):
         for (root, directories, files) in os.walk(agent_dir, topdown=True):
             for directory in directories:
                 if directory == os.path.basename(data_dir):
-                    self.set_acl_for_path("rwx", volttron_agent_user,
-                                          os.path.join(root, directory))
+                    self.set_acl_for_path("rwx", volttron_agent_user, os.path.join(root, directory))
                 else:
                     self.set_acl_for_path("rx", volttron_agent_user, os.path.join(root, directory))
         # In install directory, make all files' permissions to 400.
@@ -378,13 +369,10 @@ class AIPplatform(object):
         if pwd.getpwnam(volttron_agent_user):
             _log.info("Removing volttron agent user {}".format(volttron_agent_user))
             userdel = ["sudo", "userdel", volttron_agent_user]
-            userdel_process = subprocess.Popen(userdel,
-                                               stdout=subprocess.PIPE,
-                                               stderr=subprocess.PIPE)
+            userdel_process = subprocess.Popen(userdel, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = userdel_process.communicate()
             if userdel_process.returncode != 0:
-                _log.error("Remove {user} user failed: {stderr}".format(user=volttron_agent_user,
-                                                                        stderr=stderr))
+                _log.error("Remove {user} user failed: {stderr}".format(user=volttron_agent_user, stderr=stderr))
                 raise RuntimeError(stderr)
 
     def setup(self):
@@ -493,7 +481,7 @@ class AIPplatform(object):
                 # And there is data to backup
                 backup_agent_file = "/tmp/{}.tar.gz".format(agent_uuid)
                 with tarfile.open(backup_agent_file, "w:gz") as tar:
-                    tar.add(old_agent_data_dir, arcname=os.path.sep)  # os.path.basename(source_dir))
+                    tar.add(old_agent_data_dir, arcname=os.path.sep)    # os.path.basename(source_dir))
             # current agent's keystore overrides any keystore data passed
             keystore = self.__get_agent_keystore__(vip_identity, publickey, secretkey)
             publickey = keystore.public
@@ -649,8 +637,8 @@ class AIPplatform(object):
         if find_success:
             _log.debug(f"Successfully installed package: {find_success}")
             # if successfully installed packages includes the agent then agent_name should be returned.
-            agent_name = self._get_agent_name_on_success(
-                find_success, self._construct_package_name_from_agent_wheel(agent))
+            agent_name = self._get_agent_name_on_success(find_success,
+                                                         self._construct_package_name_from_agent_wheel(agent))
 
         # agent was not installed. Check if agent package already exists
         if not agent_name:
@@ -688,8 +676,7 @@ class AIPplatform(object):
     @staticmethod
     def _parse_wheel_install_response(response, agent_wheel):
         groups = None
-        result = re.search(".*\n(.*) is already installed with the same version as the provided wheel",
-                           response)
+        result = re.search(".*\n(.*) is already installed with the same version as the provided wheel", response)
         if result:
             groups = result.groups()
         if groups:
@@ -742,8 +729,7 @@ class AIPplatform(object):
         final_identity = self._get_available_agent_identity(name_template)
 
         if final_identity is None:
-            raise ValueError(
-                "Agent with VIP ID {} already installed on platform.".format(name_template))
+            raise ValueError("Agent with VIP ID {} already installed on platform.".format(name_template))
 
         if not is_valid_identity(final_identity):
             raise ValueError("Invalid identity detected: {}".format(",".format(final_identity)))
@@ -807,8 +793,7 @@ class AIPplatform(object):
         pkg = None
         # TODO: wheel_wrap
         # pkg = UnpackedPackage(agent_path)
-        data_dir = os.path.join(os.path.dirname(pkg.distinfo),
-                                "{}.agent-data".format(pkg.package_name))
+        data_dir = os.path.join(os.path.dirname(pkg.distinfo), "{}.agent-data".format(pkg.package_name))
         if not os.path.exists(data_dir):
             os.mkdir(data_dir)
         return data_dir
@@ -938,12 +923,10 @@ class AIPplatform(object):
 
     def status_agents(self, get_agent_user=False):
         if self.secure_agent_user and get_agent_user:
-            return [(agent_uuid, agent[0], agent[1], self.agent_status(agent_uuid),
-                     self.uuid_vip_id_map[agent_uuid])
+            return [(agent_uuid, agent[0], agent[1], self.agent_status(agent_uuid), self.uuid_vip_id_map[agent_uuid])
                     for agent_uuid, agent in self.get_active_agents_meta().items()]
         else:
-            return [(agent_uuid, agent_name, self.agent_status(agent_uuid),
-                     self.uuid_vip_id_map[agent_uuid])
+            return [(agent_uuid, agent_name, self.agent_status(agent_uuid), self.uuid_vip_id_map[agent_uuid])
                     for agent_uuid, agent_name in self.get_active_agents_meta().items()]
 
     def tag_agent(self, agent_uuid, tag):
@@ -972,8 +955,7 @@ class AIPplatform(object):
             raise ValueError("invalid agent")
 
         if not vip_identity:
-            if "/" in agent_uuid or agent_uuid in [".", ".."
-                                                   ] or not self.uuid_vip_id_map.get(agent_uuid):
+            if "/" in agent_uuid or agent_uuid in [".", ".."] or not self.uuid_vip_id_map.get(agent_uuid):
                 raise ValueError("invalid agent")
             vip_identity = self.uuid_vip_id_map[agent_uuid]
 
@@ -991,32 +973,32 @@ class AIPplatform(object):
         # TODO: wheel_wrap
         # pkg = UnpackedPackage(os.path.join(agent_path, name))
         return pkg.version
-    
+
     def get_subpath(self, uuid_or_identity: str, path: str = "") -> str:
         """ Retrieve a path inside the agent's directory
-        
+
         This method does not check for existence of the path.  It will only return the
         correct string reference.  It is up to the caller to check for existence or non-existence
         of the path.
-        
-        :param uuid_or_identity: 
+
+        :param uuid_or_identity:
             An identifier for the agent either the uuid associated with the agent or it's identity.
-            
+
         :param path:
             A path below the agent's directory in VOLTTRON_HOME/agents/<identity> that the
             caller wants to referenece.
 
         :returns: A string referencing the correct subpath to the requestors path.
-        
+
         :since
         """
-        
+
         try:
             uuid_passed = uuid.UUID(uuid_or_identity)
             identity = self.uuid_vip_id_map[uuid_or_identity]
         except ValueError:
             identity = uuid_or_identity
-        
+
         return os.path.join(self.install_dir, identity, path)
 
     def agent_dir(self, agent_uuid):
@@ -1036,7 +1018,7 @@ class AIPplatform(object):
                 pass
         return agents
 
-    def _agent_priority(self, agent_uuid):        
+    def _agent_priority(self, agent_uuid):
         autostart = self.get_subpath(agent_uuid, "AUTOSTART")
         with ignore_enoent, open(autostart) as file:
             return file.readline(100).strip()
@@ -1114,8 +1096,7 @@ class AIPplatform(object):
 
     def start_agent(self, agent_uuid):
         name = self.agent_name(agent_uuid)
-        name_no_version = name[0:name.rfind(
-            "-")]    # get last index of - to split version number from name
+        name_no_version = name[0:name.rfind("-")]    # get last index of - to split version number from name
 
         vip_identity = self.uuid_vip_id_map[agent_uuid]
         agent_dir = os.path.join(self.install_dir, vip_identity)
@@ -1167,8 +1148,7 @@ class AIPplatform(object):
 
         environ["AGENT_VIP_IDENTITY"] = vip_identity
         environ["VOLTTRON_SERVERKEY"] = KeyStore().public
-        keystore_path = os.path.join(cc.get_volttron_home(), "agents", vip_identity,
-                                     "keystore.json")
+        keystore_path = os.path.join(cc.get_volttron_home(), "agents", vip_identity, "keystore.json")
         keystore = KeyStore(keystore_path)
         environ["AGENT_PUBLICKEY"], environ["AGENT_SECRETKEY"] = keystore.public, keystore.secret
 
@@ -1218,8 +1198,9 @@ class AIPplatform(object):
             rmq_user = cc.get_fq_identity(vip_identity, self.instance_name)
             _log.info("Create RMQ user {} for agent {}".format(rmq_user, vip_identity))
 
-            self.rmq_mgmt.create_user_with_permissions(
-                rmq_user, self.rmq_mgmt.get_default_permissions(rmq_user), ssl_auth=True)
+            self.rmq_mgmt.create_user_with_permissions(rmq_user,
+                                                       self.rmq_mgmt.get_default_permissions(rmq_user),
+                                                       ssl_auth=True)
             key_file = Certs().private_key_file(rmq_user)
             if not os.path.exists(key_file):
                 # This could happen when user switches from zmq to rmq after installing agent

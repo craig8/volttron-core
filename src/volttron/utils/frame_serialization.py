@@ -1,3 +1,4 @@
+from __future__ import annotations
 # -*- coding: utf-8 -*- {{{
 # ===----------------------------------------------------------------------===
 #
@@ -24,19 +25,16 @@
 
 from json import JSONDecodeError
 import logging
-from typing import List, Any
-from zmq.sugar.frame import Frame
 import struct
 
 from volttron.utils import jsonapi
 
 _log = logging.getLogger(__name__)
 
-# python 3.8 formatting errors with utf-8 encoding.  The ISO-8859-1 is equivilent to latin-1
 ENCODE_FORMAT = "ISO-8859-1"
 
 
-def deserialize_frames(frames: List[Frame]) -> List:
+def deserialize_frames(frames: list[bytes]) -> list:
     decoded = []
 
     for x in frames:
@@ -51,12 +49,11 @@ def deserialize_frames(frames: List[Frame]) -> List:
         elif isinstance(x, str):
             decoded.append(x)
         elif x is not None:
-            # _log.debug(f'x is {x}')
             if x == {}:
                 decoded.append(x)
                 continue
             try:
-                d = x.bytes.decode(ENCODE_FORMAT)
+                d = x.decode(ENCODE_FORMAT)
             except UnicodeDecodeError as e:
                 _log.error(f"Unicode decode error: {e}")
                 decoded.append(x)
@@ -68,17 +65,15 @@ def deserialize_frames(frames: List[Frame]) -> List:
     return decoded
 
 
-def serialize_frames(data: List[Any]) -> List[Frame]:
+def serialize_frames(data: list[any]) -> list[bytes]:
     frames = []
 
     for x in data:
         try:
             if isinstance(x, list) or isinstance(x, dict):
-                frames.append(Frame(jsonapi.dumps(x).encode(ENCODE_FORMAT)))
-            elif isinstance(x, Frame):
-                frames.append(x)
+                frames.append(jsonapi.dumps(x).encode(ENCODE_FORMAT))
             elif isinstance(x, bytes):
-                frames.append(Frame(x))
+                frames.append(x)
             elif isinstance(x, bool):
                 frames.append(struct.pack("?", x))
             elif isinstance(x, int):
@@ -86,15 +81,13 @@ def serialize_frames(data: List[Any]) -> List[Frame]:
             elif isinstance(x, float):
                 frames.append(struct.pack("f", x))
             elif x is None:
-                frames.append(Frame(x))
+                frames.append(None)
             else:
-                frames.append(Frame(x.encode(ENCODE_FORMAT)))
+                frames.append(x.encode(ENCODE_FORMAT))
         except TypeError as e:
             import sys
-
             sys.exit(0)
         except AttributeError as e:
             import sys
-
             sys.exit(0)
     return frames
