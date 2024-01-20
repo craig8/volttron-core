@@ -39,11 +39,10 @@ from urllib.parse import urlsplit, parse_qs, urlunsplit
 
 import gevent.event
 from gevent.queue import Queue
-from zmq import green as zmq
-from zmq.green import ZMQError, EAGAIN, ENOTSOCK
-from zmq.utils.monitor import recv_monitor_message
 
-from volttron.utils import ClientContext as cc, get_address
+from volttron.types.client_context import ClientContext
+
+from volttron.utils import ClientContext as cc
 
 # from volttron.client.agent import utils
 # from volttron.client.agent.utils import load_platform_config, get_platform_instance_name
@@ -51,16 +50,12 @@ from volttron.utils import ClientContext as cc, get_address
 # from volttron.client.keystore import KeyStore, KnownHostsStore
 # from volttron.utils.rmq_mgmt import RabbitMQMgmt
 from volttron import utils
-from volttron.utils.keystore import KeyStore, KnownHostsStore
+#from volttron.utils.keystore import KeyStore, KnownHostsStore
 from .decorators import annotate, annotations, dualmethod
 from .dispatch import Signal
 from .errors import VIPError
-# from .. import router
 
-# TODO add back rabbitmq
-# from ..rmq_connection import RMQConnection
-from volttron.utils.socket import Message
-from ...vip.zmq_connection import ZMQConnection
+#from ...vip.zmq_connection import ZMQConnection
 import volttron.client as client
 
 __all__ = ["BasicCore", "Core", "ZMQCore", "killing"]
@@ -200,8 +195,7 @@ class BasicCore(object):
         periodics = []
 
         def setup(member):    # pylint: disable=redefined-outer-name
-            periodics.extend(
-                periodic.get(member) for periodic in annotations(member, list, "core.periodics"))
+            periodics.extend(periodic.get(member) for periodic in annotations(member, list, "core.periodics"))
             for deadline, args, kwargs in annotations(member, list, "core.schedule"):
                 self.schedule(deadline, member, *args, **kwargs)
             for name in annotations(member, set, "core.signals"):
@@ -483,22 +477,20 @@ class Core(BasicCore):
     # to false to keep from blocking. AuthService does this.
     delay_running_event_set = True
 
-    def __init__(
-        self,
-        owner,
-        address=None,
-        identity=None,
-        context=None,
-        publickey=None,
-        secretkey=None,
-        serverkey=None,
-        volttron_home=os.path.abspath(cc.get_volttron_home()),
-        agent_uuid=None,
-        reconnect_interval=None,
-        version="0.1",
-        instance_name=None,
-        messagebus=None,
-    ):
+    def __init__(self, owner, context: ClientContext
+    # address=None,
+    # identity=None,
+    # context=None,
+    # publickey=None,
+    # secretkey=None,
+    # serverkey=None,
+    # volttron_home=os.path.abspath(cc.get_volttron_home()),
+    # agent_uuid=None,
+    # reconnect_interval=None,
+    # version="0.1",
+    # instance_name=None,
+    # messagebus=None,
+                 ):
         self.volttron_home = volttron_home
 
         # These signals need to exist before calling super().__init__()
@@ -671,8 +663,7 @@ class ZMQCore(Core):
         self._set_keys()
 
         _log.debug("AGENT RUNNING on ZMQ Core {}".format(self.identity))
-        _log.debug(
-            f"keys: server: {self.serverkey} public: {self.publickey}, secret: {self.secretkey}")
+        _log.debug(f"keys: server: {self.serverkey} public: {self.publickey}, secret: {self.secretkey}")
         self.socket = None
 
     def get_connected(self):
@@ -715,8 +706,7 @@ class ZMQCore(Core):
         if self.publickey is None or self.secretkey is None:
             self.publickey = os.environ.get("AGENT_PUBLICKEY")
             self.secretkey = os.environ.get("AGENT_SECRETKEY")
-            _log.debug(
-                f" after setting agent provate and public key {self.publickey} {self.secretkey}")
+            _log.debug(f" after setting agent provate and public key {self.publickey} {self.secretkey}")
         if self.publickey is None or self.secretkey is None:
             self.publickey, self.secretkey, _ = self._get_keys_from_addr()
         if self.publickey is None or self.secretkey is None:
@@ -729,11 +719,9 @@ class ZMQCore(Core):
             self.serverkey = os.environ.get("VOLTTRON_SERVERKEY")
         known_serverkey = self._get_serverkey_from_known_hosts()
 
-        if (self.serverkey is not None and known_serverkey is not None
-                and self.serverkey != known_serverkey):
+        if (self.serverkey is not None and known_serverkey is not None and self.serverkey != known_serverkey):
             raise Exception("Provided server key ({}) for {} does "
-                            "not match known serverkey ({}).".format(self.serverkey, self.address,
-                                                                     known_serverkey))
+                            "not match known serverkey ({}).".format(self.serverkey, self.address, known_serverkey))
 
         # Until we have containers for agents we should not require all
         # platforms that connect to be in the known host file.
@@ -757,10 +745,7 @@ class ZMQCore(Core):
     def loop(self, running_event):
         # pre-setup
         # self.context.set(zmq.MAX_SOCKETS, 30690)
-        self.connection = ZMQConnection(self.address,
-                                        self.identity,
-                                        self.instance_name,
-                                        context=self.context)
+        self.connection = ZMQConnection(self.address, self.identity, self.instance_name, context=self.context)
         self.connection.open_connection(zmq.DEALER)
         flags = dict(hwm=6000, reconnect_interval=self.reconnect_interval)
         self.connection.set_properties(flags)
@@ -771,8 +756,8 @@ class ZMQCore(Core):
         state = type("HelloState", (), {"count": 0, "ident": None})
 
         hello_response_event = gevent.event.Event()
-        connection_failed_check, hello, hello_response = self.create_event_handlers(
-            state, hello_response_event, running_event)
+        connection_failed_check, hello, hello_response = self.create_event_handlers(state, hello_response_event,
+                                                                                    running_event)
 
         def close_socket(sender):
             gevent.sleep(2)
@@ -864,8 +849,8 @@ class ZMQCore(Core):
                 #     subsystem, message.id, len(message.args), message.args[0]))
 
                 # Handle hellos sent by CONNECTED event
-                if (str(subsystem) == "hello" and message.id == state.ident
-                        and len(message.args) > 3 and message.args[0] == "welcome"):
+                if (str(subsystem) == "hello" and message.id == state.ident and len(message.args) > 3
+                        and message.args[0] == "welcome"):
                     version, server, identity = message.args[1:4]
                     self.connected = True
                     self.onconnected.send(self, version=version, router=server, identity=identity)
@@ -971,8 +956,7 @@ if cc.is_rabbitmq_available():
             else:
                 self.instance_name = instance_name
 
-            assert (self.instance_name
-                    ), "Instance name must have been set in the platform config file."
+            assert (self.instance_name), "Instance name must have been set in the platform config file."
             assert (not volttron_central_instance_name
                     ), "Please report this as volttron_central_instance_name shouldn't be passed."
 
@@ -1010,11 +994,9 @@ if cc.is_rabbitmq_available():
             else:
                 try:
                     if self.instance_name == cc.get_instance_name():
-                        param = self.rmq_mgmt.build_agent_connection(self.identity,
-                                                                     self.instance_name)
+                        param = self.rmq_mgmt.build_agent_connection(self.identity, self.instance_name)
                     else:
-                        param = self.rmq_mgmt.build_remote_connection_param(
-                            self.rmq_user, self.rmq_address, True)
+                        param = self.rmq_mgmt.build_remote_connection_param(self.rmq_user, self.rmq_address, True)
                 except AttributeError:
                     _log.error("RabbitMQ broker may not be running. Restart the broker first")
                     param = None
@@ -1057,12 +1039,10 @@ if cc.is_rabbitmq_available():
                     bindings = self.rmq_mgmt.get_bindings("volttron")
                 except AttributeError:
                     bindings = None
-                router_user = router_key = "{inst}.{ident}".format(inst=self.instance_name,
-                                                                   ident="router")
+                router_user = router_key = "{inst}.{ident}".format(inst=self.instance_name, ident="router")
                 if bindings:
                     for binding in bindings:
-                        if (binding["destination"] == router_user
-                                and binding["routing_key"] == router_key):
+                        if (binding["destination"] == router_user and binding["routing_key"] == router_key):
                             router_connected = True
                             break
                 # Connection retry attempt issue #1702.
@@ -1071,9 +1051,8 @@ if cc.is_rabbitmq_available():
                 if router_connected:
                     hello()
                 else:
-                    _log.debug(
-                        "Router not bound to RabbitMQ yet, waiting for 2 seconds before sending hello {}"
-                        .format(self.identity))
+                    _log.debug("Router not bound to RabbitMQ yet, waiting for 2 seconds before sending hello {}".format(
+                        self.identity))
                     self.spawn_later(2, hello)
 
             # Connect to RMQ broker. Register a callback to get notified when
@@ -1100,8 +1079,7 @@ if cc.is_rabbitmq_available():
                             subsystem = message.subsystem
 
                             if subsystem == "hello":
-                                if (subsystem == "hello" and message.id == state.ident
-                                        and len(message.args) > 3
+                                if (subsystem == "hello" and message.id == state.ident and len(message.args) > 3
                                         and message.args[0] == "welcome"):
                                     version, server, identity = message.args[1:4]
                                     self.connected = True

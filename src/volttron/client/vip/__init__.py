@@ -21,7 +21,6 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
 """VIP - VOLTTRON™ Interconnect Protocol implementation
 
 See https://volttron.readthedocs.io/en/develop/core_services/messagebus/VIP/VIP-Overview.html
@@ -34,15 +33,6 @@ state as there is with the gevent version in the green sub-module.
 """
 
 from threading import local as _local
-
-import zmq as _zmq
-
-from volttron.utils.socket import _Socket
-
-
-class Socket(_Socket, _zmq.Socket):
-    _context_class = _zmq.Context
-    _local_class = _local
 
 
 class BaseConnection(object):

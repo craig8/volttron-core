@@ -68,8 +68,9 @@ def load_dir(package: str, pth: Path):
             _log.debug(f"Loading {new_package}")
             try:
                 globals()[new_package] = importlib.import_module(new_package)
-            except ImportError:
-                pass
+            except ImportError as ex:
+                _log.error(f"Failed to import {new_package} due to {ex}")
+                continue
             # after = set(globals().keys())
             # print("After import")
             # print(before - after)

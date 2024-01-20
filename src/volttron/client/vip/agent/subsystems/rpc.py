@@ -39,9 +39,6 @@ from ..results import counter, ResultsDictionary
 from ..decorators import annotate, annotations, dualmethod, spawn
 from volttron.utils import jsonrpc
 
-from zmq import ZMQError
-from zmq.green import ENOTSOCK
-
 __all__ = ["RPC"]
 
 _ROOT_PACKAGE_PATH = (os.path.dirname(__import__(__name__.split(".", 1)[0]).__path__[-1]) + os.sep)
@@ -158,8 +155,7 @@ class Dispatcher(jsonrpc.Dispatcher):
             if p.default is not inspect.Parameter.empty:
                 response["params"][p.name]["default"] = p.default
             if p.annotation is not inspect.Parameter.empty:
-                annotation = (p.annotation.__name__
-                              if type(p.annotation) is type else str(p.annotation))
+                annotation = (p.annotation.__name__ if type(p.annotation) is type else str(p.annotation))
                 response["params"][p.name]["annotation"] = annotation
         doc = inspect.getdoc(method)
         if doc:
@@ -275,8 +271,7 @@ class RPC(SubsystemBase):
                 pass
             elif not required_caps.issubset(user_capabilities_names):
                 msg = ("method '{}' requires capabilities {}, but capability {} "
-                       "was provided for user {}").format(method.__name__, required_caps,
-                                                          user_capabilites, user)
+                       "was provided for user {}").format(method.__name__, required_caps, user_capabilites, user)
                 raise jsonrpc.exception_from_json(jsonrpc.UNAUTHORIZED, msg)
             else:
                 # Now check if args passed to method are the ones allowed.
@@ -350,10 +345,7 @@ class RPC(SubsystemBase):
             dispatch = self._dispatcher.dispatch
             # _log.debug("External RPC IN message args {}".format(message))
 
-            responses = [
-                response for response in (dispatch(msg, message) for msg in message.args)
-                if response
-            ]
+            responses = [response for response in (dispatch(msg, message) for msg in message.args) if response]
             # _log.debug("External RPC Responses {}".format(responses))
             if responses:
                 message.user = ""
@@ -400,15 +392,9 @@ class RPC(SubsystemBase):
                 if not isinstance(msg, dict):
                     message.args[idx] = jsonapi.loads(msg)
 
-            responses = [
-                response for response in (dispatch(msg, message) for msg in message.args)
-                if response
-            ]
+            responses = [response for response in (dispatch(msg, message) for msg in message.args) if response]
         else:
-            responses = [
-                response for response in (dispatch(msg, message) for msg in message.args)
-                if response
-            ]
+            responses = [response for response in (dispatch(msg, message) for msg in message.args) if response]
         if responses:
             message.user = ""
             message.args = responses
@@ -533,11 +519,7 @@ class RPC(SubsystemBase):
                 # peer connected to ZMQ bus, send via proxy router agent
                 self.core().connection.send_via_proxy(peer, "RPC", msg_id=ident, args=[request])
             else:
-                self.core().connection.send_vip(peer,
-                                                "RPC",
-                                                args=[request],
-                                                msg_id=ident,
-                                                platform=platform)
+                self.core().connection.send_vip(peer, "RPC", args=[request], msg_id=ident, platform=platform)
 
         return result
 

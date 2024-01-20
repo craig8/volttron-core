@@ -21,7 +21,6 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
 """ Core package."""
 from typing import List
 
@@ -45,10 +44,9 @@ import logging
 
 from urllib.parse import urlparse
 
-from volttron.client.vip.agent import Agent, build_agent
+from volttron.client.vip.agent import Agent
 from volttron.client.vip.agent.core import Core
 from volttron.client.vip.agent.subsystems.rpc import RPC
-from volttron.client.vip.agent.subsystems.channel import Channel
 from volttron.client.vip.agent.subsystems.hello import Hello
 from volttron.client.vip.agent.subsystems.peerlist import PeerList
 from volttron.client.vip.agent.subsystems.ping import Ping
@@ -61,8 +59,8 @@ from volttron.client.vip.agent.subsystems.auth import Auth
 from volttron.client.vip.agent.subsystems.query import Query
 
 __all__: List[str] = [
-    "Agent", "Core", "RPC", "Channel", "Hello", "PeerList", "Ping", "PubSub", "Heartbeat",
-    "Health", "ConfigStore", "Auth", "Query"
+    "Agent", "Core", "RPC", "Channel", "Hello", "PeerList", "Ping", "PubSub", "Heartbeat", "Health", "ConfigStore",
+    "Auth", "Query"
 ]
 
 _log = logging.getLogger(__name__)
@@ -76,15 +74,14 @@ def build_vip_address_string(vip_root, serverkey, publickey, secretkey):
 
     :raises ValueError if one of the parameters is None.
     """
-    _log.debug("root: {}, serverkey: {}, publickey: {}, secretkey: {}".format(
-        vip_root, serverkey, publickey, secretkey))
+    _log.debug("root: {}, serverkey: {}, publickey: {}, secretkey: {}".format(vip_root, serverkey, publickey,
+                                                                              secretkey))
     parsed = urlparse(vip_root)
     if parsed.scheme == "tcp":
         if not (serverkey and publickey and secretkey and vip_root):
             raise ValueError("All parameters must be entered.")
 
-        root = "{}?serverkey={}&publickey={}&secretkey={}".format(vip_root, serverkey, publickey,
-                                                                  secretkey)
+        root = "{}?serverkey={}&publickey={}&secretkey={}".format(vip_root, serverkey, publickey, secretkey)
 
     elif parsed.scheme == "ipc":
         root = vip_root

@@ -27,8 +27,6 @@ import weakref
 
 from .base import SubsystemBase
 from ..results import ResultsDictionary
-from zmq import ZMQError
-from zmq.green import ENOTSOCK
 
 __all__ = ["Ping"]
 

@@ -29,8 +29,6 @@ from .base import SubsystemBase
 from ..dispatch import Signal
 from ..results import ResultsDictionary
 from volttron.utils import jsonapi
-from zmq import ZMQError
-from zmq.green import ENOTSOCK
 
 __all__ = ["PeerList"]
 
@@ -51,11 +49,7 @@ class PeerList(SubsystemBase):
         connection = self.core().connection
         result = next(self._results)
 
-        try:
-            connection.send_vip("", "peerlist", args=["list"], msg_id=result.ident)
-        except ZMQError as exc:
-            if exc.errno == ENOTSOCK:
-                _log.error("Socket send on non socket {}".format(self.core().identity))
+        connection.send_vip("", "peerlist", args=["list"], msg_id=result.ident)
         return result
 
     def add_peer(self, peer, message_bus=None):
@@ -64,10 +58,7 @@ class PeerList(SubsystemBase):
         if not message_bus:
             message_bus = self.core().messagebus
         try:
-            connection.send_vip("",
-                                "peerlist",
-                                args=["add", peer, message_bus],
-                                msg_id=result.ident)
+            connection.send_vip("", "peerlist", args=["add", peer, message_bus], msg_id=result.ident)
         except ZMQError as exc:
             if exc.errno == ENOTSOCK:
                 _log.error("Socket send on non socket {}".format(self.core().identity))
@@ -79,10 +70,7 @@ class PeerList(SubsystemBase):
         if not message_bus:
             message_bus = self.core().messagebus
         try:
-            connection.send_vip("",
-                                "peerlist",
-                                args=["drop", peer, message_bus],
-                                msg_id=result.ident)
+            connection.send_vip("", "peerlist", args=["drop", peer, message_bus], msg_id=result.ident)
         except ZMQError as exc:
             if exc.errno == ENOTSOCK:
                 _log.error("Socket send on non socket {}".format(self.core().identity))
