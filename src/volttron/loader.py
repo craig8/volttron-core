@@ -4,6 +4,7 @@ import importlib
 import inspect
 import logging
 import sys
+import traceback
 from types import ModuleType
 from typing import List, Type
 from pathlib import Path
@@ -13,6 +14,8 @@ from volttron.utils import logtrace
 __all__: List[str] = ["get_module", "get_class", "get_subclasses", "load_dir"]
 
 _log = logging.getLogger(__name__)
+
+__loaded__: set[str] = set()
 
 
 @logtrace
@@ -64,12 +67,15 @@ def load_dir(package: str, pth: Path):
             _log.debug(f"Skipping {new_package}")
             continue
         #print(globals())
-        if new_package not in globals():
+        if p.absolute().as_posix() not in __loaded__:
+            __loaded__.add(p.absolute().as_posix())
             _log.debug(f"Loading {new_package}")
             try:
-                globals()[new_package] = importlib.import_module(new_package)
+                importlib.import_module(new_package)
             except ImportError as ex:
+                traceback.print_exc()
                 _log.error(f"Failed to import {new_package} due to {ex}")
+                raise
                 continue
             # after = set(globals().keys())
             # print("After import")
