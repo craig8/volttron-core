@@ -26,7 +26,7 @@ AUTH = "platform.auth"
 
 VOLTTRON_CENTRAL = "volttron.central"
 VOLTTRON_CENTRAL_PLATFORM = "platform.agent"
-
+PLATFORM_AUTH = AUTH
 PLATFORM_DRIVER = "platform.driver"
 PLATFORM_TOPIC_WATCHER = "platform.topic_watcher"
 PLATFORM_SYSMON = "platform.sysmon"
@@ -40,9 +40,11 @@ PLATFORM_TAGGING = "platform.tagging"
 
 ROUTER = ""
 CONTROL = "platform.control"
+PLATFORM_CONTROL = CONTROL
 CONTROL_CONNECTION = "control.connection"
 PLATFORM_WEB = "platform.web"
 CONFIGURATION_STORE = "platform.config_store"
+PLATFORM_CONFIG = CONFIGURATION_STORE
 KEY_DISCOVERY = "keydiscovery"
 PROXY_ROUTER = "zmq.proxy.router"
 
@@ -51,6 +53,7 @@ ALL_KNOWN_IDENTITIES = sorted((
     VOLTTRON_CENTRAL,
     VOLTTRON_CENTRAL_PLATFORM,
     PLATFORM_HISTORIAN,
+    PLATFORM_CONFIG,
     CONTROL,
     CONTROL_CONNECTION,
     PLATFORM_WEB,
@@ -68,7 +71,8 @@ ALL_KNOWN_IDENTITIES = sorted((
 PROCESS_IDENTITIES = sorted((
     AUTH,
     PLATFORM_HEALTH,
-    CONFIGURATION_STORE,
+    PLATFORM_CONFIG,
+    PLATFORM_CONFIG,
     CONTROL,
     PLATFORM_WEB,
     KEY_DISCOVERY,

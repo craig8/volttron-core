@@ -11,11 +11,11 @@ from typing import TypeVar
 from typing import Protocol
 from volttron.types.protocols import (Connection, MessageBus, Service, RequiresServiceIdentity)
 from volttron.types.auth import (AuthService, Authorizer, Authenticator, CredentialsStore, CredentialsManager,
-                                 AuthRuleManager)
+                                 AuthorizationManager)
 from volttron.utils.logs import logtrace
 
 
-def factory_registration(name: str, protocol: Protocol = None):
+def factory_registration(registy_name: str, protocol: Protocol = None):
     """
     Create a factory registration function.
 
@@ -56,7 +56,7 @@ def factory_registration(name: str, protocol: Protocol = None):
         register.registry[lookup_key] = cls
         return cls
 
-    register.name = name
+    register.registy_name = registy_name
     register.registry = {}
     return register
 
@@ -68,9 +68,9 @@ service = factory_registration("service", protocol=Service | RequiresServiceIden
 authservice = factory_registration("authservice", protocol=AuthService)
 authorizer = factory_registration("authorizer", protocol=Authorizer)
 authenticator = factory_registration("authenticator", protocol=Authenticator)
-authrulecreator = factory_registration("authrulecreator", protocol=AuthRuleManager)
+authorization_manager = factory_registration("authorization_manager", protocol=AuthorizationManager)
 credentials_store = factory_registration("credentials_store", protocol=CredentialsStore)
-credentials_creator = factory_registration("credentials_creator", protocol=CredentialsManager)
+credentials_manager = factory_registration("credentials_manager", protocol=CredentialsManager)
 auth_create_hook = factory_registration("auth_create_hook")
 auth_add_hook = factory_registration("auth_add_hook")
 auth_remove_hook = factory_registration("auth_remove_hook")
@@ -79,23 +79,28 @@ auth_list_hook = factory_registration("auth_list_hook")
 
 def __get_create_instance_from_factory__(*, instances, registration, name: str = None, **kwargs):
     if not registration.registry:
-        raise ValueError(f"No {name} is currently registered")
+        raise ValueError(f"No {registration.registy_name} is currently registered")
 
     if name is None and len(registration.registry) > 1:
         raise ValueError(f"Can't figure out which messagebus to return.")
 
-    mb = None
+    the_instance = None
     if name is None:
         # First name of the registry dictionary.
         name = list(registration.registry.keys())[0]
+        signature = inspect.signature(registration.registry[name].__init__)
+        for k, v in kwargs.items():
+            if k not in signature.parameters:
+                raise ValueError(f"Invalid parameter {k} for {name} signature has {signature.parameters}")
+
         instances[name] = registration.registry[name](**kwargs)
     elif name not in instances:
         instances[name] = registration.registry[name]()
 
-    mb = instances.get(name)
-    if mb is None:
+    the_instance = instances.get(name)
+    if the_instance is None:
         raise ValueError(f"Couldn't retrieve {name} from register")
-    return mb
+    return the_instance
 
 
 def __get_class_from_factory__(registration, name: str = None):
@@ -181,33 +186,45 @@ __authorizer__: dict[str, Authorizer] = {}
 
 
 @logtrace
-def get_authorizer(name: str = None, credentials_rules_map: dict = {}) -> Authorizer:
-    authorizeritem: Authorizer = None
+def get_authorizer(name: str = None, authorization_manager: AuthorizationManager = None) -> Authorizer:
+    authorizer_instance: Authorizer = None
     if name is not None:
         authorizeritem = __authorizer__.get(name, None)
-    if authorizeritem is None:
-        authorizeritem = __get_create_instance_from_factory__(instances=__authorizer__,
-                                                              registration=authorizer,
-                                                              name=name,
-                                                              credentials_rules_map=credentials_rules_map)
-        if authorizeritem is not None:
-            __authorizer__[name] = authorizeritem
-    return authorizeritem
+
+    # Use the default authorization manager if none is provided.
+    if authorization_manager is None:
+        authorization_manager = get_authorization_manager()
+
+    assert isinstance(authorization_manager, AuthorizationManager)
+
+    if authorizer_instance is None:
+        authorizer_instance = __get_create_instance_from_factory__(instances=__authorizer__,
+                                                                   registration=authorizer,
+                                                                   name=name,
+                                                                   authorization_manager=authorization_manager)
+        if authorizer_instance is not None:
+            __authorizer__[name] = authorizer_instance
+    return authorizer_instance
 
 
 __authenticator__: dict[str, Authenticator] = {}
 
 
 @logtrace
-def get_authenticator(name: str = None, credentials_store: CredentialsStore = None) -> Authenticator:
+def get_authenticator(name: str = None, credentials_manager: CredentialsManager = None) -> Authenticator:
     authenticatoritem: Authenticator = None
     if name is not None:
         authenticatoritem = __authenticator__.get(name, None)
+    if credentials_manager is None:
+        credentials_manager = get_credentials_manager()
+
+    assert isinstance(credentials_manager, CredentialsManager)
+
     if authenticatoritem is None:
         authenticatoritem = __get_create_instance_from_factory__(instances=__authenticator__,
                                                                  registration=authenticator,
                                                                  name=name,
-                                                                 credentials_store=credentials_store)
+                                                                 credentials_manager=credentials_manager)
         if authenticatoritem is not None:
             __authenticator__[name] = authenticatoritem
     return authenticatoritem
@@ -230,21 +247,21 @@ def get_credentials_store(name: str = None) -> CredentialsStore:
     return credentials_store_item
 
 
-__auth_rule_creator__: dict[str, AuthRuleManager] = {}
+__authorization_manager__: dict[str, AuthorizationManager] = {}
 
 
 @logtrace
-def get_auth_rule_manager(name: str = None) -> AuthRuleManager:
-    rule_creator_item: AuthRuleManager = None
+def get_authorization_manager(name: str = None) -> AuthorizationManager:
+    auth_manager: AuthorizationManager = None
     if name is not None:
-        rule_creator_item = __auth_rule_creator__.get(name, None)
-    if rule_creator_item is None:
-        rule_creator_item = __get_create_instance_from_factory__(instances=__auth_rule_creator__,
-                                                                 registration=authrulecreator,
-                                                                 name=name)
-        if rule_creator_item is not None:
-            __auth_rule_creator__[name] = rule_creator_item
-    return rule_creator_item
+        auth_manager = __authorization_manager__.get(name, None)
+    if auth_manager is None:
+        auth_manager = __get_create_instance_from_factory__(instances=__authorization_manager__,
+                                                            registration=authorization_manager,
+                                                            name=name)
+        if auth_manager is not None:
+            __authorization_manager__[name] = auth_manager
+    return auth_manager
 
 
 @logtrace
@@ -252,7 +269,7 @@ def get_authservice_class(name=None) -> type:
     return __get_class_from_factory__(authservice, name)
 
 
-__credentials_creator__: dict[str, CredentialsManager] = {}
+__credentials_manager__: dict[str, CredentialsManager] = {}
 
 
 @logtrace
@@ -260,13 +277,13 @@ def get_credentials_manager(name=None) -> CredentialsManager:
 
     creator_item: CredentialsManager = None
     if name is not None:
-        creator_item = __credentials_creator__.get(name, None)
+        creator_item = __credentials_manager__.get(name, None)
     if creator_item is None:
-        creator_item = __get_create_instance_from_factory__(instances=__credentials_creator__,
-                                                            registration=credentials_creator,
+        creator_item = __get_create_instance_from_factory__(instances=__credentials_manager__,
+                                                            registration=credentials_manager,
                                                             name=name)
         if creator_item is not None:
-            __credentials_creator__[name] = creator_item
+            __credentials_manager__[name] = creator_item
     return creator_item
 
 
