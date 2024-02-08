@@ -35,7 +35,6 @@ from volttron.client.known_identities import AUTH
 from volttron.utils import ClientContext as cc
 from volttron.utils import jsonapi
 from volttron.utils.jsonrpc import RemoteError
-from volttron.utils.keystore import KeyStore
 """
 The auth subsystem allows an agent to quickly query authorization state
 (e.g., which capabilities each user has been granted).
@@ -68,7 +67,7 @@ class Auth(SubsystemBase):
         address,
         serverkey=None,
         agent_class: "Agent" = None,
-        keystore: KeyStore = None,
+        keystore=None,
     ) -> Union["Agent", None]:
         """
         Agent atempts to connect to a remote platform to exchange data.
@@ -146,12 +145,10 @@ class Auth(SubsystemBase):
                 # volttron central has more than one platform.agent connecting
                 if cc.get_messagebus() == "zmq":
                     if not info.vip_address or not info.serverkey:
-                        err = "Discovery from {} did not return serverkey and/or vip_address".format(
-                            address)
+                        err = "Discovery from {} did not return serverkey and/or vip_address".format(address)
                         raise ValueError(err)
 
-                    _log.debug("Connecting using: {}".format(
-                        cc.get_fq_identity(self._core().identity)))
+                    _log.debug("Connecting using: {}".format(cc.get_fq_identity(self._core().identity)))
 
                     # use fully qualified identity
                     value = build_agent(
@@ -196,13 +193,12 @@ class Auth(SubsystemBase):
 
                             remote_rmq_user = cc.get_fq_identity(fqid_local, info.instance_name)
                             _log.debug("REMOTE RMQ USER IS: {}".format(remote_rmq_user))
-                            remote_rmq_address = (
-                                self._core().rmq_mgmt.build_remote_connection_param(
-                                    remote_rmq_user,
-                                    info.rmq_address,
-                                    ssl_auth=True,
-                                    cert_dir=self.get_remote_certs_dir(),
-                                ))
+                            remote_rmq_address = (self._core().rmq_mgmt.build_remote_connection_param(
+                                remote_rmq_user,
+                                info.rmq_address,
+                                ssl_auth=True,
+                                cert_dir=self.get_remote_certs_dir(),
+                            ))
 
                             value = build_agent(
                                 identity=fqid_local,
@@ -242,14 +238,11 @@ class Auth(SubsystemBase):
                             address=info.vip_address,
                         )
             except DiscoveryError:
-                _log.error(
-                    "Couldn't connect to {} or incorrect response returned response was {}".format(
-                        address, value))
+                _log.error("Couldn't connect to {} or incorrect response returned response was {}".format(
+                    address, value))
 
         else:
-            raise ValueError(
-                "Invalid configuration found the address: {} has an invalid scheme".format(
-                    address))
+            raise ValueError("Invalid configuration found the address: {} has an invalid scheme".format(address))
 
         return value
 
@@ -366,8 +359,7 @@ class Auth(SubsystemBase):
         while self._dirty:
             self._dirty = False
             try:
-                self._user_to_capabilities = (self._rpc().call(
-                    AUTH, "get_user_to_capabilities").get(timeout=10))
+                self._user_to_capabilities = (self._rpc().call(AUTH, "get_user_to_capabilities").get(timeout=10))
                 _log.debug("self. user to cap {}".format(self._user_to_capabilities))
             except RemoteError:
                 self._dirty = True
