@@ -35,7 +35,6 @@ volttron_src_path = Path(__file__).resolve().parent.parent.joinpath("src")
 
 assert volttron_src_path.exists()
 
-print(sys.path)
 if str(volttron_src_path) not in sys.path:
     print(f"Adding source path {volttron_src_path}")
     sys.path.insert(0, str(volttron_src_path))
@@ -49,7 +48,6 @@ def create_volttron_home(monkeypatch) -> str:
     :return: str: the temp directory
     """
     volttron_home = tempfile.mkdtemp(prefix="/tmp/volttron_testing").strip()
-    monkeypatch.setenv("VOLTTRON_HOME", volttron_home)
 
     # This is needed to run tests with volttron's secure mode. Without this
     # default permissions for folders under /tmp directory doesn't not have read or execute for
@@ -62,6 +60,9 @@ def create_volttron_home(monkeypatch) -> str:
     volttron_home = os.path.join(volttron_home, "volttron_home")
     os.makedirs(volttron_home)
 
+    # Finally set the VOLTTRON_HOME environment variable
+    monkeypatch.setenv("VOLTTRON_HOME", volttron_home)
+
     return volttron_home
 
 
@@ -72,7 +73,7 @@ def create_volttron_home_fun_scope(monkeypatch):
 
     yield volttron_home.strip()
 
-    shutil.rmtree(volttron_home, ignore_errors=True)
+    shutil.rmtree(Path(volttron_home).parent.as_posix(), ignore_errors=True)
 
 
 @pytest.fixture(scope="module")
@@ -82,4 +83,4 @@ def create_volttron_home_mod_scope(monkeypatch):
 
     yield volttron_home.strip()
 
-    shutil.rmtree(volttron_home, ignore_errors=True)
+    shutil.rmtree(Path(volttron_home).parent.as_posix(), ignore_errors=True)
