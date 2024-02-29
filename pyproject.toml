@@ -24,7 +24,8 @@ classifiers = [
 ]
 
 packages = [
-    { include = "volttron", from = "src" }
+    { include = "volttron", from = "src" },
+    { include = "corefixtures", from = "tests" }
 ]
 
 [tool.poetry.dependencies]
@@ -40,14 +41,10 @@ cryptography = "^41.0.7"
 watchdog-gevent = "^0.1.1"
 deprecated = "^1.2.14"
 dataclass-wizard = "^0.22.2"
+pip = "^24.0"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.4"
-mock = "^5.1.0"
-pre-commit = "^3.6.0"
-yapf = "^0.40.2"
-toml = "^0.10.2"
-mypy = "^1.8.0"
+volttron-test-utils = { path="../volttron-test-utils", develop = true}
 
 [build-system]
 requires = ["poetry-core>=1.2.0"]
@@ -75,8 +72,22 @@ column_limit = 120
 split_before_logical_operator = true
 
 [tool.mypy]
+plugins = ["returns.contrib.mypy.returns_plugin"]
 show_error_context = true
 pretty = true
 show_column_numbers = true
 warn_return_any = true
 warn_unused_configs = true
+allow_redefinition = false
+check_untyped_defs = true
+ignore_errors = false
+ignore_missing_imports = true
+implicit_reexport = false
+local_partial_types = true
+no_implicit_optional = true
+strict_equality = true
+strict_optional = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_ignores = true
