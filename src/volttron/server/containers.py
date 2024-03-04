@@ -134,23 +134,25 @@ class Container:
             else:
                 return Success.from_value(found)
 
-        elif inspect.isclass(field):
+        return Failure(None)
 
-            match self._resolve_arguments(field, **kwargs):
-                case Success(value):
-                    if value == {}:
-                        return Success.from_value(field())
-                    return Success.from_value(field(**value))
-            for k, v in self._resolvable.items():
-                if isinstance(v, Container.ResolvableList):
-                    if v.contains(field):
-                        return v.retrieve(field)
+        # elif inspect.isclass(field):
 
-            return Failure(f"Unable to resolve arguments to {field}.__init__")
-        elif Container.is_optional_type(field):
-            return self._resolve_optional_argument(field)
-        else:
-            return self._resolve_argument(field)
+        #     match self._resolve_arguments(field, **kwargs):
+        #         case Success(value):
+        #             if value == {}:
+        #                 return Success.from_value(field())
+        #             return Success.from_value(field(**value))
+        #     for k, v in self._resolvable.items():
+        #         if isinstance(v, Container.ResolvableList):
+        #             if v.contains(field):
+        #                 return v.retrieve(field)
+
+        #     return Failure(f"Unable to resolve arguments to {field}.__init__")
+        # elif Container.is_optional_type(field):
+        #     return self._resolve_optional_argument(field)
+        # else:
+        #     return self._resolve_argument(field)
 
     def _resolve_arguments(self, fn: callable, **kwargs) -> Result[dict, None]:
         if inspect.isclass(fn):

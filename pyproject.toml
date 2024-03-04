@@ -7,7 +7,7 @@ license = "Apache-2.0"
 readme = "README.md"
 homepage = "https://volttron.org"
 repository = "https://github.com/eclipse-volttron/volttron-core"
-documentation = "https://volttron.readthedocs.org"
+documentation = "https://eclipse-volttron.readthedocs.io"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Education",
@@ -42,6 +42,7 @@ watchdog-gevent = "^0.1.1"
 deprecated = "^1.2.14"
 dataclass-wizard = "^0.22.2"
 pip = "^24.0"
+returns = "^0.22.0"
 
 [tool.poetry.group.dev.dependencies]
 volttron-test-utils = { path="../volttron-test-utils", develop = true}
