@@ -1,61 +1,91 @@
-from typing import Protocol, runtime_checkable
+from abc import ABC, abstractmethod
+from typing import Optional
 
-from volttron.types.auth.auth_credentials import Credentials, CredentialsStore
+from volttron.server.server_options import ServerOptions
+from volttron.types import Identity
+from volttron.types.auth.auth_credentials import (Credentials, CredentialsCreator, CredentialsStore)
 
 
-@runtime_checkable
-class AuthorizerProtocol(Protocol):
+class Authorizer(ABC):
 
-    def is_authorized(self, role: str, action: str, resource: any, **kwargs) -> bool:
+    # def __init__(*, credentials_rules_map: any, **kwargs):
+    #     ...
+    @abstractmethod
+    def is_authorized(self, *, role: str, action: str, resource: any, **kwargs) -> bool:
         ...
 
 
-@runtime_checkable
-class AuthenticatorProtocol(Protocol):
+class Authenticator(ABC):
 
-    def authenticate(self, credentials: Credentials) -> bool:
+    @abstractmethod
+    def authenticate(self, *, credentials: Credentials, address: str, domain: Optional[str] = None) -> bool:
         ...
 
 
-@runtime_checkable
-class AuthServiceProtocol(Protocol):
+class AuthorizationManager(ABC):
 
-    def initialize(store: CredentialsStore, authorizer: AuthorizerProtocol, authenticator: AuthenticatorProtocol):
+    @abstractmethod
+    def create(self, *, role: str, action: str, resource: any, **kwargs) -> any:
         ...
 
-    @staticmethod
-    def get_auth_type() -> str:
+    @abstractmethod
+    def delete(self, *, role: str, action: str, resource: any, **kwargs) -> any:
         ...
 
-    def is_authorized(credentials: Credentials, action: str, resource: str) -> bool:
+    @abstractmethod
+    def getall(self) -> list:
         ...
 
-    def is_authorized(credentials: Credentials, action: str, resource: str) -> bool:
+
+class AuthService(ABC):
+
+    @abstractmethod
+    def authenticate(domain: str, address: str, credentials: Credentials) -> Identity:
         ...
 
-    def register_Credential(credentials: Credentials):
+    @abstractmethod
+    def is_authorized(credentials: Credentials, action: str, resource: str, **kwargs) -> bool:
         ...
 
-    def is_authorized(credentials: Credentials, action: str, resource: str) -> bool:
+    @abstractmethod
+    def add_credentials(credentials: Credentials):
         ...
 
-    def register_Credential(credentials: Credentials) -> bool:
+    @abstractmethod
+    def remove_credentials(credentials: Credentials):
         ...
 
+    @abstractmethod
+    def is_credentials(identity: str) -> bool:
+        ...
+
+    @abstractmethod
+    def has_credentials_for(identity: str) -> bool:
+        ...
+
+    @abstractmethod
     def add_role(role: str) -> None:
         ...
 
+    @abstractmethod
     def remove_role(role: str) -> None:
         ...
 
-    def add_credential_to_role(credential: Credentials, group: str) -> None:
+    @abstractmethod
+    def is_role(role: str) -> bool:
         ...
 
-    def remove_credential_from_role(credential: Credentials, group: str) -> None:
-        ...
+    # def add_credential_to_role(credential: Credentials, role: str) -> None:
+    #     ...
 
-    def add_capability(name: str, value: str | list | dict, role: str = None, credential: Credentials = None) -> None:
-        ...
+    # def remove_credential_from_role(credential: Credentials, role: str) -> None:
+    #     ...
 
-    def remove_capability(name: str, role: str, credential: Credentials = None) -> None:
-        ...
+    # def add_capability(name: str, value: str | list | dict, role: str = None, credential: Credentials = None) -> None:
+    #     ...
+
+    # def is_capability(name: str):
+    #     ...
+
+    # def remove_capability(name: str, role: str, credential: Credentials = None) -> None:
+    #     ...

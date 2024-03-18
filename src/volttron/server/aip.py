@@ -22,6 +22,7 @@
 # ===----------------------------------------------------------------------===
 # }}}
 """Component for the instantiation and packaging of agents."""
+from __future__ import annotations
 
 import errno
 import grp
@@ -34,6 +35,7 @@ import signal
 import sys
 import tarfile
 import uuid
+from functools import cached_property
 from typing import Optional
 
 # import requests
@@ -43,12 +45,19 @@ import yaml
 from gevent import subprocess
 from gevent.subprocess import PIPE
 
+from volttron.client.known_identities import VOLTTRON_CENTRAL_PLATFORM
+from volttron.server.containers import service_repo
+from volttron.server.decorators import service
+from volttron.server.server_options import ServerOptions
+from volttron.types.bases import AgentInstaller
 # from wheel.tool import unpack
-from volttron.utils import (ClientContext as cc, get_utc_seconds_from_epoch, execute_command)
-from ..utils import jsonapi
+from volttron.utils import ClientContext as cc
+from volttron.utils import execute_command, get_utc_seconds_from_epoch
 from volttron.utils.certs import Certs
 from volttron.utils.identities import is_valid_identity
-from volttron.client.known_identities import VOLTTRON_CENTRAL_PLATFORM
+
+from ..utils import jsonapi
+
 #from volttron.client.vip.agent import Agent
 
 # from volttron.platform.agent.utils import load_platform_config, \
@@ -152,7 +161,7 @@ class IgnoreErrno(object):
 ignore_enoent = IgnoreErrno(errno.ENOENT)
 
 
-class ExecutionEnvironment(object):
+class ExecutionEnvironment:
     """Environment reserved for agent execution.
 
     Deleting ExecutionEnvironment objects should cause the process to
@@ -164,6 +173,12 @@ class ExecutionEnvironment(object):
         self.env = None
 
     def execute(self, *args, **kwargs):
+        """
+        Passes *args and **kwargs to popen.  And stores it in the process member variable.
+        Stores the kwargs env variable if specified in the env member variable.
+
+        :raises OSError: raised if the file does not exist or is not executable etc.
+        """
         try:
             self.env = kwargs.get("env", None)
             self.process = subprocess.Popen(*args, **kwargs, universal_newlines=True)
@@ -197,9 +212,9 @@ class ExecutionEnvironment(object):
         self.execute(*args, **kwargs)
 
 
-class SecureExecutionEnvironment(object):
+class SecureExecutionEnvironment:
 
-    def __init__(self, agent_user):
+    def __init__(self, agent_user: str):
         self.process = None
         self.env = None
         self.agent_user = agent_user
@@ -236,20 +251,104 @@ class SecureExecutionEnvironment(object):
         self.execute(*args, **kwargs)
 
 
-class AIPplatform(object):
-    """Manages the main workflow of receiving and sending agents."""
+class PoetryBuilder:
+    ...
 
-    def __init__(self, env, **kwargs):
-        self.env = env
-        self.active_agents = {}
+
+class PipBuilder:
+    ...
+
+
+class PipInstaller:
+
+    def __init__(self, wheelhouse: str = "/tmp/wheelhouse") -> None:
+        self._wheelhouse = wheelhouse
+
+    def install(self, package_or_file: str, force: bool = False, allow_pre_release: bool = False):
+        _log.info(f"AGENT_WHEEL: {self._package_or_file}")
+
+        is_file = package_or_file.endswith(".whl")
+
+        if force:
+            cmd = [sys.executable, "-m", "pip", "install", "--force-reinstall"]
+        else:
+            cmd = [sys.executable, "-m", "pip", "install"]
+
+        if self._wheelhouse:
+            cmd.extend(["--find-links", self._wheelhouse])
+
+        if allow_pre_release:
+            cmd.append("--pre")
+
+        cmd.append(package_or_file)
+        _log.debug(f"Executing agent install command : {cmd}")
+        response = execute_command(cmd)
+        agent_name = None
+        last_line = response.strip().split("\n")[-1]
+        _log.debug(f"last line of response {last_line}")
+        find_success = re.match("Successfully installed (.*)", last_line)
+
+        if find_success:
+            _log.debug(f"Successfully installed package: {find_success}")
+            # if successfully installed packages includes the agent then agent_name should be returned.
+            agent_name = self._get_agent_name_on_success(find_success,
+                                                         self._construct_package_name_from_agent_wheel(package_or_file))
+
+        # agent was not installed. Check if agent package already exists
+        if not agent_name:
+            # output in this case depends on whether you install from pypi or wheel
+            if is_file:
+                # format :
+                # {package name} is already installed with the same version as the provided wheel.
+                agent_name = self._parse_wheel_install_response(response, package_or_file)
+            else:
+                # install from pypi - output will have format
+                # Requirement already satisfied: {name} in ./.venv/lib/python3.8/site-packages ({version})
+                agent_name = self._parse_pypi_install_response(response, package_or_file)
+        return agent_name
+
+
+#service_repo[AgentInstaller] = lambda: PipInstaller()
+# @dependency_definition(server_container)
+# def agent_installer(package_or_file: str, force: bool = False, allow_pre_release: bool = False) -> AgentInstaller:
+#     return PipInstaller(package_or_file=package_or_file, force=force, allow_pre_release=allow_pre_release)
+
+
+class AIPplatform:
+
+    def __init__(self, opts: ServerOptions,
+                 installer: AgentInstaller):    #, agent_installer: AgentInstaller, agent_executor: AgentExecutor):
+        self._opts = opts
+        self._installer = installer
+        # self._installer = agent_installer
+        # self._executor = agent_executor
+
+        #self.env = env
+        self._active_agents = {}
         self.vip_id_uuid_map = {}
         self.uuid_vip_id_map = {}
-        self.secure_agent_user = cc.is_secure_mode()
-        self.message_bus = cc.get_messagebus()
 
-        # if self.message_bus == 'rmq':
-        #     self.rmq_mgmt = RabbitMQMgmt()
-        self.instance_name = cc.get_instance_name()    # get_platform_instance_name()
+    def start(self, **kwargs):
+        ...
+
+    def stop(self):
+        ...
+
+    @cached_property
+    def instance_name(self) -> str:
+        return self._opts.instance_name
+
+    @cached_property
+    def config_dir(self) -> str:
+        return os.path.abspath(self._opts.volttron_home)
+
+    @cached_property
+    def install_dir(self) -> str:
+        return os.path.join(self._opts.volttron_home, "agents")
+
+    @cached_property
+    def run_dir(self) -> str:
+        return os.path.join(self._opts.volttron_home, "run")
 
     def add_agent_user_group(self):
         user = pwd.getpwuid(os.getuid())
@@ -337,17 +436,17 @@ class AIPplatform(object):
         #  multi instance connections. This will not be requirement in
         #  VOLTTRON 8.0 once CSR is implemented for
         #  federation and shovel. The below lines can be removed then
-        if self.message_bus == "rmq":
-            os.chmod(os.path.join(cc.get_volttron_home, "certificates/private"), 0o755)
-            self.set_acl_for_path(
-                "r",
-                volttron_agent_user,
-                os.path.join(
-                    cc.get_volttron_home(),
-                    "certificates/private",
-                    self.instance_name + "-admin.pem",
-                ),
-            )
+        # if self.message_bus == "rmq":
+        #     os.chmod(os.path.join(cc.get_volttron_home, "certificates/private"), 0o755)
+        #     self.set_acl_for_path(
+        #         "r",
+        #         volttron_agent_user,
+        #         os.path.join(
+        #             cc.get_volttron_home(),
+        #             "certificates/private",
+        #             self.instance_name + "-admin.pem",
+        #         ),
+        #     )
 
     def _set_agent_dir_file_permissions(self, input_dir, agent_user, data_dir):
         """Recursively change permissions to all files in given directrory to 400 but for files in
@@ -376,7 +475,12 @@ class AIPplatform(object):
                 raise RuntimeError(stderr)
 
     def setup(self):
-        """Creates paths for used directories for the instance."""
+        """
+        Creates paths for used directories for the instance.
+
+        This function is resposible for reading existing agent uuid -> identity
+        and identity -> uuid mapping into the internal structures.
+        """
         for path in [self.run_dir, self.config_dir, self.install_dir]:
             if not os.path.exists(path):
                 # others should have read and execute access to these directory
@@ -384,13 +488,6 @@ class AIPplatform(object):
                 _log.debug("Setting up 755 permissions for path {}".format(path))
                 os.makedirs(path)
                 os.chmod(path, 0o755)
-        # Create certificates directory and its subdirectory at start of platform
-        # so if volttron is run in secure mode, the first agent install would already have
-        # the directories ready. In secure mode, agents will be run as separate user and will
-        # not have access to create these directories
-        Certs()
-
-        # load installed agent vip_id ids and uuids
 
         for vip_id in os.listdir(self.install_dir):
             with open(os.path.join(self.install_dir, vip_id, "UUID"), "r") as f:
@@ -399,18 +496,18 @@ class AIPplatform(object):
                 self.vip_id_uuid_map[vip_id] = agent_uuid
 
     def finish(self):
-        for exeenv in self.active_agents.values():
+        for exeenv in self._active_agents.values():
             if exeenv.process.poll() is None:
                 exeenv.process.send_signal(signal.SIGINT)
-        for exeenv in self.active_agents.values():
+        for exeenv in self._active_agents.values():
             if exeenv.process.poll() is None:
                 exeenv.process.terminate()
-        for exeenv in self.active_agents.values():
+        for exeenv in self._active_agents.values():
             if exeenv.process.poll() is None:
                 exeenv.process.kill()
 
     def shutdown(self):
-        for agent_uuid in self.active_agents.keys():
+        for agent_uuid in self._active_agents.keys():
             _log.debug("Stopping agent UUID {}".format(agent_uuid))
             self.stop_agent(agent_uuid)
         event = gevent.event.Event()
@@ -423,7 +520,7 @@ class AIPplatform(object):
             task.kill()
 
     def brute_force_platform_shutdown(self):
-        for agent_uuid in list(self.active_agents.keys()):
+        for agent_uuid in list(self._active_agents.keys()):
             _log.debug("Stopping agent UUID {}".format(agent_uuid))
             self.stop_agent(agent_uuid)
         # kill the platform
@@ -435,12 +532,8 @@ class AIPplatform(object):
             os.kill(pid, signal.SIGINT)
             os.remove(pid_file)
 
-    subscribe_address = property(lambda me: me.env.subscribe_address)
-    publish_address = property(lambda me: me.env.publish_address)
-
-    config_dir = property(lambda me: os.path.abspath(me.env.volttron_home))
-    install_dir = property(lambda me: os.path.join(me.config_dir, "agents"))
-    run_dir = property(lambda me: os.path.join(me.config_dir, "run"))
+    # subscribe_address = property(lambda me: me.env.subscribe_address)
+    # publish_address = property(lambda me: me.env.publish_address)
 
     def autostart(self):
         agents, errors = [], []
@@ -499,15 +592,27 @@ class AIPplatform(object):
 
     def install_agent(self,
                       agent,
-                      vip_identity=None,
-                      publickey=None,
-                      secretkey=None,
-                      agent_config=None,
-                      force=False,
-                      pre_release=False):
+                      vip_identity: str = None,
+                      agent_config: dict = None,
+                      force: bool = False,
+                      pre_release=False) -> str:
         """
         Installs the agent into the current environment, set up the agent data directory and
         agent data structure.
+
+        :param agent: The agent to be installed.
+        :type agent: str
+        :param vip_identity: The VIP identity of the agent. If not provided, a default VIP identity will be generated based upon agent.
+        :type vip_identity: str, optional
+        :param agent_config: The configuration for the agent. If not provided, an empty dictionary will be used.
+        :type agent_config: dict, optional
+        :param force: Flag indicating whether to force the installation even if the agent identity already exists, default False.
+        :type force: bool, optional
+        :param pre_release: Flag indicating whether to install a pre-release version of the agent, default False.
+        :type pre_release: bool, optional
+
+        :return: The UUID of the installed agent.
+        :rtype: str
         """
         if agent_config is None:
             agent_config = dict()
@@ -515,9 +620,12 @@ class AIPplatform(object):
         agent_uuid = self._raise_error_if_identity_exists_without_force(vip_identity, force)
         # This should happen before install of source. if force=True then below line will remove agent source when
         # removing last/only instance of an agent
-        backup_agent_file, publickey, secretkey = self.backup_agent_data(agent_uuid, publickey, secretkey, vip_identity)
+        # TODO add backup back in...
+        #self.backup_agent_data()
+        #backup_agent_file, publickey, secretkey = self.backup_agent_data(agent_uuid, publickey, secretkey, vip_identity)
+        self._installer.install_agent(agent=agent, force=force, allow_pre_release=pre_release)
 
-        agent_name = self.install_agent_source(agent, force, pre_release)
+        #agent_name = self.install_agent_source(agent, force, pre_release)
 
         # get default vip_identity if vip_identity is not passed
         # default value will be in "agent_name-default-vip-id" file in site-packages dir
@@ -525,7 +633,7 @@ class AIPplatform(object):
             # get site-packages dir using agent's package name
             # installed package name is agent_name without version. Version is at the end. ex. agent-name-0.2.1
             installed_package_name = agent_name[0:agent_name.rfind("-")]
-            cmd = ["pip", "show", installed_package_name]
+            cmd = [sys.executable, "-m", "pip", "show", installed_package_name]
             response = execute_command(cmd)
             site_package_dir = re.search(".*\nLocation: (.*)", response).groups()[0].strip()
             # get default vip id
@@ -537,8 +645,9 @@ class AIPplatform(object):
 
         final_identity = self._setup_agent_vip_id(agent_name, vip_identity=vip_identity)
 
-        if self.secure_agent_user:
-            _log.info("Installing secure Volttron agent...")
+        # TODO secure agent?
+        # if self.secure_agent_user:
+        #     _log.info("Installing secure Volttron agent...")
 
         uuid_values = self.uuid_vip_id_map.keys()
 
@@ -561,40 +670,43 @@ class AIPplatform(object):
                 yaml.dump(agent_config, f)
         except OSError as exc:
             raise
-        try:
-            # if auth is not None and self.env.verify_agents:
-            #     unpacker = auth.VolttronPackageWheelFile(agent_wheel, certsobj=Certs())
-            #     unpacker.unpack(dest=agent_path)
 
-            keystore = self.__get_agent_keystore__(final_identity, publickey, secretkey)
+        # TODO should be given this from auth I think.
+        # try:
 
-            self._authorize_agent_keys(final_identity, keystore.public)
+        #     # if auth is not None and self.env.verify_agents:
+        #     #     unpacker = auth.VolttronPackageWheelFile(agent_wheel, certsobj=Certs())
+        #     #     unpacker.unpack(dest=agent_path)
 
-            if self.message_bus == "rmq":
-                rmq_user = cc.get_fq_identity(final_identity, cc.get_instance_name())
-                # rmq_user = get_fq_identity(final_identity,
-                #                            self.instance_name)
-                Certs().create_signed_cert_files(rmq_user, overwrite=False)
+        #     # keystore = self.__get_agent_keystore__(final_identity, publickey, secretkey)
 
-            if self.secure_agent_user:
-                # When installing, we always create a new user, as anything
-                # that already exists is untrustworthy
-                created_user = self.add_agent_user(self.agent_name(agent_uuid), agent_path)
-                self.set_agent_user_permissions(created_user, agent_uuid, agent_path)
+        #     # self._authorize_agent_keys(final_identity, keystore.public)
 
-            # finally update the vip id uuid maps
-            self.vip_id_uuid_map[final_identity] = agent_uuid
-            self.uuid_vip_id_map[agent_uuid] = final_identity
+        #     # if self.message_bus == "rmq":
+        #     #     rmq_user = cc.get_fq_identity(final_identity, cc.get_instance_name())
+        #     #     # rmq_user = get_fq_identity(final_identity,
+        #     #     #                            self.instance_name)
+        #     #     Certs().create_signed_cert_files(rmq_user, overwrite=False)
 
-            if backup_agent_file is not None:
-                self.restore_agent_data_from_tgz(
-                    backup_agent_file,
-                    self.get_agent_data_dir(agent_uuid),
-                )
+        #     # if self.secure_agent_user:
+        #     #     # When installing, we always create a new user, as anything
+        #     #     # that already exists is untrustworthy
+        #     #     created_user = self.add_agent_user(self.agent_name(agent_uuid), agent_path)
+        #     #     self.set_agent_user_permissions(created_user, agent_uuid, agent_path)
 
-        except Exception:
-            shutil.rmtree(agent_path)
-            raise
+        #     # # finally update the vip id uuid maps
+        #     # self.vip_id_uuid_map[final_identity] = agent_uuid
+        #     # self.uuid_vip_id_map[agent_uuid] = final_identity
+
+        #     # if backup_agent_file is not None:
+        #     #     self.restore_agent_data_from_tgz(
+        #     #         backup_agent_file,
+        #     #         self.get_agent_data_dir(agent_uuid),
+        #     #     )
+
+        # except Exception:
+        #     shutil.rmtree(agent_path)
+        #     raise
 
         return agent_uuid
 
@@ -614,44 +726,6 @@ class AIPplatform(object):
         if agent_uuid and not force:
             raise ValueError("Identity already exists, but not forced!")
         return agent_uuid
-
-    def install_agent_source(self, agent, force, pre_release):
-        _log.info(f"AGENT_WHEEL: {agent}")
-
-        if force:
-            cmd = ["pip", "install", "--force-reinstall"]
-        else:
-            cmd = ["pip", "install"]
-
-        if pre_release:
-            cmd.append("--pre")
-
-        cmd.append(agent)
-        _log.debug(f"Executing agent install command : {cmd}")
-        response = execute_command(cmd)
-        agent_name = None
-        last_line = response.strip().split("\n")[-1]
-        _log.debug(f"last line of response {last_line}")
-        find_success = re.match("Successfully installed (.*)", last_line)
-
-        if find_success:
-            _log.debug(f"Successfully installed package: {find_success}")
-            # if successfully installed packages includes the agent then agent_name should be returned.
-            agent_name = self._get_agent_name_on_success(find_success,
-                                                         self._construct_package_name_from_agent_wheel(agent))
-
-        # agent was not installed. Check if agent package already exists
-        if not agent_name:
-            # output in this case depends on whether you install from pypi or wheel
-            if agent.endswith(".whl") and os.path.isfile(agent):
-                # format :
-                # {package name} is already installed with the same version as the provided wheel.
-                agent_name = self._parse_wheel_install_response(response, agent)
-            else:
-                # install from pypi - output will have format
-                # Requirement already satisfied: {name} in ./.venv/lib/python3.8/site-packages ({version})
-                agent_name = self._parse_pypi_install_response(response, agent)
-        return agent_name
 
     @staticmethod
     def _construct_package_name_from_agent_wheel(agent_wheel):
@@ -846,7 +920,7 @@ class AIPplatform(object):
         #         _log.error(
         #             f"RabbitMQ user {rmq_user} is not available to delete. Going ahead and removing agent directory"
         #         )
-        self.active_agents.pop(agent_uuid, None)
+        self._active_agents.pop(agent_uuid, None)
         agent_directory = os.path.join(self.install_dir, vip_identity)
         volttron_agent_user = None
         if self.secure_agent_user:
@@ -903,14 +977,14 @@ class AIPplatform(object):
         if self.secure_agent_user and get_agent_user:
             return {
                 agent_uuid: (execenv.name, execenv.agent_user)
-                for agent_uuid, execenv in self.active_agents.items()
+                for agent_uuid, execenv in self._active_agents.items()
             }
         else:
-            return {agent_uuid: execenv.name for agent_uuid, execenv in self.active_agents.items()}
+            return {agent_uuid: execenv.name for agent_uuid, execenv in self._active_agents.items()}
 
     def clear_status(self, clear_all=False):
         remove = []
-        for agent_uuid, execenv in self.active_agents.items():
+        for agent_uuid, execenv in self._active_agents.items():
             if execenv.process.poll() is not None:
                 if clear_all:
                     remove.append(agent_uuid)
@@ -919,7 +993,7 @@ class AIPplatform(object):
                     if not os.path.exists(path):
                         remove.append(agent_uuid)
         for agent_uuid in remove:
-            self.active_agents.pop(agent_uuid, None)
+            self._active_agents.pop(agent_uuid, None)
 
     def status_agents(self, get_agent_user=False):
         if self.secure_agent_user and get_agent_user:
@@ -1100,7 +1174,7 @@ class AIPplatform(object):
 
         vip_identity = self.uuid_vip_id_map[agent_uuid]
         agent_dir = os.path.join(self.install_dir, vip_identity)
-        execenv = self.active_agents.get(agent_uuid)
+        execenv = self._active_agents.get(agent_uuid)
         if execenv and execenv.process.poll() is None:
             _log.warning("request to start already running agent %s", name)
             raise ValueError("agent is already running")
@@ -1228,7 +1302,7 @@ class AIPplatform(object):
             stdout=PIPE,
             stderr=PIPE,
         )
-        self.active_agents[agent_uuid] = execenv
+        self._active_agents[agent_uuid] = execenv
         proc = execenv.process
         _log.info("agent %s has PID %s", name, proc.pid)
         gevent.spawn(
@@ -1251,19 +1325,23 @@ class AIPplatform(object):
         return self.agent_status(agent_uuid)
 
     def agent_status(self, agent_uuid):
-        execenv = self.active_agents.get(agent_uuid)
+        execenv = self._active_agents.get(agent_uuid)
         if execenv is None:
             return (None, None)
         return execenv.process.pid, execenv.process.poll()
 
     def stop_agent(self, agent_uuid):
         try:
-            execenv = self.active_agents[agent_uuid]
+            execenv = self._active_agents[agent_uuid]
             return execenv.stop()
         except KeyError:
             return
 
     def agent_uuid_from_pid(self, pid):
-        for agent_uuid, execenv in self.active_agents.items():
+        for agent_uuid, execenv in self._active_agents.items():
             if execenv.process.pid == pid:
                 return agent_uuid if execenv.process.poll() is None else None
+
+
+service_repo.add_interface_reference(AgentInstaller, PipInstaller)
+service_repo.add_interface_reference(AIPplatform, AIPplatform)

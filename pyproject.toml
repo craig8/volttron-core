@@ -43,6 +43,8 @@ deprecated = "^1.2.14"
 dataclass-wizard = "^0.22.2"
 pip = "^24.0"
 returns = "^0.22.0"
+coloredlogs = "^15.0.1"
+blinker = "^1.7.0"
 
 [tool.poetry.group.dev.dependencies]
 volttron-test-utils = { path="../volttron-test-utils", develop = true}

@@ -27,26 +27,25 @@ import hashlib
 import logging.config
 import os
 import shutil
+import sys
 import tempfile
 from datetime import timedelta
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import gevent
 import gevent.event
-import sys
 
-from volttron.client.messaging.health import Status, STATUS_BAD
-from volttron.client.vip.agent import (
-    Core,
-    RPC,
-)
+from volttron.client.known_identities import CONTROL
+from volttron.client.messaging.health import STATUS_BAD, Status
+from volttron.client.vip.agent import RPC, Agent, Core
 from volttron.client.vip.agent.subsystems.query import Query
-from volttron.types import ServiceInterface
-from volttron.utils import (
-    ClientContext as cc,
-    get_aware_utc_now,
-)
-from volttron.utils import jsonapi
+from volttron.server.aip import AIPplatform
+from volttron.server.decorators import service
+from volttron.types.auth.auth_credentials import Credentials, CredentialsStore
+from volttron.types.auth.auth_service import AuthService
+from volttron.types.bases import Service
+from volttron.utils import ClientContext as cc
+from volttron.utils import get_aware_utc_now, jsonapi
 from volttron.utils.scheduling import periodic
 
 # noinspection PyUnresolvedReferences
@@ -70,31 +69,33 @@ _stderr = sys.stderr
 
 _log = logging.getLogger(os.path.basename(sys.argv[0]) if __name__ == "__main__" else __name__)
 
-message_bus = cc.get_messagebus()
-rmq_mgmt = None
-
 CHUNK_SIZE = 4096
 
 
-class ControlService(ServiceInterface):
+@service
+class ControlService(Service, Agent):
 
-    @classmethod
-    def get_kwargs_defaults(cls) -> Dict[str, Any]:
-        """
-        Class method that allows the specific class to have the ability to specify
-        what service arguments are available as defaults.
-        """
-        return {"agent-monitor-frequency": 10}
+    class Meta:
+        identity: str = CONTROL
 
-    def __init__(self, aip, **kwargs):
+    def __init__(self, *, aip: AIPplatform, auth_service: AuthService, credential_store: CredentialsStore, **kwargs):
 
         tracker = kwargs.pop("tracker", None)
         # Control config store not necessary right now
         kwargs["enable_store"] = False
         kwargs["enable_channel"] = True
         agent_monitor_frequency = kwargs.pop("agent-monitor-frequency", 10)
-        super(ControlService, self).__init__(**kwargs)
+
+        if auth_service is None and credential_store is None:
+            creds = Credentials(self.Meta.identity)
+        elif auth_service is not None and credential_store is not None:
+            creds = credential_store.retrieve_credentials(identity=CONTROL)
+        else:
+            raise ValueError("Both auth_service and credential_store must be provided or neither.")
+
+        super().__init__(credentials=creds, **kwargs)
         self._aip = aip
+        self._auth_service = auth_service
         self._tracker = tracker
         self.crashed_agents = {}
         self.agent_monitor_frequency = int(agent_monitor_frequency)
@@ -121,8 +122,8 @@ class ControlService(ServiceInterface):
         self.vip.rpc.export(lambda: self._tracker.stats, "stats.get")
 
     @Core.receiver("onstart")
-    def onstart(self, sender, **kwargs):
-        _log.debug(" agent monitor frequency is... {}".format(self.agent_monitor_frequency))
+    def start(self, sender, **kwargs):
+        _log.debug("agent monitor frequency is... {}".format(self.agent_monitor_frequency))
         self.core.schedule(periodic(self.agent_monitor_frequency), self._monitor_agents)
 
     def _monitor_agents(self):
@@ -377,7 +378,6 @@ class ControlService(ServiceInterface):
                           force: bool = False,
                           pre_release: bool = False,
                           agent_config: str = None):
-
         """
         Install the agent through the rmq message bus.
         """
@@ -409,16 +409,12 @@ class ControlService(ServiceInterface):
             sha512 = hashlib.sha512()
 
             try:
-                request_checksum = base64.b64encode(jsonapi.dumps(
-                    ["checksum"]).encode("utf-8")).decode("utf-8")
-                request_fetch = base64.b64encode(
-                    jsonapi.dumps(["fetch",
-                                   protocol_request_size]).encode("utf-8")).decode("utf-8")
+                request_checksum = base64.b64encode(jsonapi.dumps(["checksum"]).encode("utf-8")).decode("utf-8")
+                request_fetch = base64.b64encode(jsonapi.dumps(["fetch",
+                                                                protocol_request_size]).encode("utf-8")).decode("utf-8")
 
                 _log.debug(f"Server subscribing to {topic}")
-                self.vip.pubsub.subscribe(peer="pubsub",
-                                          prefix=topic,
-                                          callback=protocol_subscription).get(timeout=5)
+                self.vip.pubsub.subscribe(peer="pubsub", prefix=topic, callback=protocol_subscription).get(timeout=5)
                 gevent.sleep(5)
                 while True:
 
@@ -427,8 +423,7 @@ class ControlService(ServiceInterface):
                     response_received = False
 
                     # request a chunk of the file
-                    self.vip.pubsub.publish("pubsub", topic=response_topic,
-                                            message=request_fetch).get(timeout=5)
+                    self.vip.pubsub.publish("pubsub", topic=response_topic, message=request_fetch).get(timeout=5)
                     # chunk binary representation of the bytes read from
                     # the other side of the connection
                     with gevent.Timeout(30):
@@ -449,9 +444,7 @@ class ControlService(ServiceInterface):
                     with gevent.Timeout(30):
                         _log.debug("Requesting checksum")
                         response_received = False
-                        self.vip.pubsub.publish("pubsub",
-                                                topic=response_topic,
-                                                message=request_checksum).get(timeout=5)
+                        self.vip.pubsub.publish("pubsub", topic=response_topic, message=request_checksum).get(timeout=5)
 
                         while not response_received:
                             gevent.sleep(0.1)
@@ -483,8 +476,6 @@ class ControlService(ServiceInterface):
                       agent: str,
                       channel_name: str,
                       vip_identity: str = None,
-                      publickey: str = None,
-                      secretkey: str = None,
                       force: bool = False,
                       pre_release: bool = False,
                       agent_config: str = None):

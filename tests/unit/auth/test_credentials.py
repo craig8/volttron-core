@@ -5,7 +5,7 @@ import pytest
 from volttron.types.auth import Credentials, PKICredentials
 
 
-def test_can_modify_credentials():
+def test_credentials_cannot_be_modified():
     foo_cred = Credentials.create(identity="foo")
     assert foo_cred
 

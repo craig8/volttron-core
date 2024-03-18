@@ -21,7 +21,6 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
 """Implementation of JSON-RPC 2.0 with support for bi-directional calls.
 
 See http://www.jsonrpc.org/specification for the complete specification.
@@ -29,6 +28,7 @@ See http://www.jsonrpc.org/specification for the complete specification.
 
 import sys
 from contextlib import contextmanager
+from typing import Any, Optional
 
 from volttron.utils import jsonapi
 
@@ -74,7 +74,7 @@ def json_validate_response(jsonresponse):
         assert jsonresponse.get("error", None)
 
 
-def json_method(ident, method, args, kwargs):
+def json_method(ident, method, args, kwargs) -> dict[str, Any]:
     """Builds a JSON-RPC request object (dictionary)."""
     request = {"jsonrpc": "2.0", "method": str(method)}
     if args and kwargs:
@@ -232,15 +232,15 @@ class Dispatcher(object):
     batch handling methods should also be implemented.
     """
 
-    def serialize(self, json_obj):
+    def serialize(self, json_obj: Any) -> str:
         """Pack compatible Python objects into and return JSON string."""
         raise NotImplementedError()
 
-    def deserialize(self, json_string):
+    def deserialize(self, json_string: str) -> Any:
         """Unpack a JSON string and return Python object(s)."""
         raise NotImplementedError()
 
-    def batch_call(self, requests):
+    def batch_call(self, requests: list[tuple[str, str, Optional[list], Optional[dict]]]) -> str:
         """Create and return a request for a batch of method calls.
 
         requests is an iterator of lists or tuples with 4 items each:
@@ -248,8 +248,7 @@ class Dispatcher(object):
         required by the call() method. The first (ident) element may be
         None to indicate a notification.
         """
-        return self.serialize(
-            [json_method(ident, method, args, kwargs) for ident, method, args, kwargs in requests])
+        return self.serialize([json_method(ident, method, args, kwargs) for ident, method, args, kwargs in requests])
 
     def call(self, ident, method, args=None, kwargs=None):
         """Create and return a request for a single method call."""

@@ -36,6 +36,9 @@ def undocontext():
     # Resets the context of volttron_home klass
     # variable (NOTE not sure if this is the best
     # way or not to undo this.)
+    if 'VOLTTRON_HOME' in os.environ:
+        del os.environ['VOLTTRON_HOME']
+
     yield
 
     ClientContext.__volttron_home__ = None
@@ -60,8 +63,7 @@ def test_can_use_VOLTTRON_HOME_DIR(create_volttron_home_fun_scope, monkeypatch, 
     assert Path(volttron_home).exists()
 
 
-def test_change_VOLTTRON_HOME_raises_exception(create_volttron_home_fun_scope, monkeypatch,
-                                               undocontext):
+def test_change_VOLTTRON_HOME_raises_exception(create_volttron_home_fun_scope, monkeypatch, undocontext):
 
     volttron_home = ClientContext.get_volttron_home()
 

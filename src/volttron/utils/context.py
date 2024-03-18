@@ -21,19 +21,59 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
-from configparser import ConfigParser
+from __future__ import annotations
 
 # used to make sure that volttron_home hasn't be modified
 # since written to disk.
 import logging
 import os
+from configparser import ConfigParser
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .frozendict import FrozenDict
 
 _log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, kw_only=True)
+class EnvironmentalContext:
+    volttron_home: str
+    launched_by_platform: bool
+    identity: str
+    address: str
+    data_dir: str
+
+    @staticmethod
+    def from_env(env: dict = None):
+        if env is None:
+            env = os.environ
+        volttron_home = env.get("VOLTTRON_HOME", Path("~/.volttron").expanduser().as_posix())
+        launched_by_platform = "_LAUNCHED_BY_PLATFORM" in env
+        identity = env.get("AGENT_IDENTITY")
+        address = env.get("AGENT_ADDRESS")
+        assert identity
+        assert address
+        data_dir = Path(volttron_home) / f"agents/{identity}/data"
+        return EnvironmentalContext(identity=identity,
+                                    launched_by_platform=launched_by_platform,
+                                    volttron_home=volttron_home,
+                                    address=address,
+                                    data_dir=data_dir.as_posix())
+
+
+@dataclass(frozen=True, kw_only=True)
+class AgentContext:
+    credentials: Credentials
+    data_directory: Path
+
+    @staticmethod
+    def create_from_credential_store(credential_store: CredentialsStore, identity: str) -> AgentContext:
+        credentials = credential_store.get(identity)
+        if not credentials:
+            raise ValueError(f"Identity {identity} not found in credential store")
+        return AgentContext(credentials, credential_store.data_directory)
 
 
 class ClientContext:
@@ -44,8 +84,8 @@ class ClientContext:
 
     __volttron_home__: Optional[Path] = None
     __config__: dict = {}
-    __config_keys__ = ("vip-address", "bind-web-address", "instance-name", "message-bus",
-                       "web-ssl-cert", "web-ssl-key", "web-secret-key", "secure-agent-users")
+    __config_keys__ = ("vip-address", "bind-web-address", "instance-name", "message-bus", "web-ssl-cert", "web-ssl-key",
+                       "web-secret-key", "secure-agent-users")
 
     @classmethod
     def __load_config__(cls: "ClientContext"):
@@ -97,6 +137,7 @@ class ClientContext:
         @return:str:
             The absolute path to the volttron_home.
         """
+        from volttron.types.blinker import volttron_home_set_evnt
 
         # vhome to test against for modification.
         vhome = (Path(os.environ.get("VOLTTRON_HOME", "~/.volttron")).expanduser().resolve())
@@ -117,7 +158,10 @@ class ClientContext:
                 # python 3.6 doesn't support pathlike object in mkdir
                 os.makedirs(str(vhome), exist_ok=True)
 
-        return str(vhome)
+        if 'VOLTTRON_HOME' not in os.environ:
+            os.environ['VOLTTRON_HOME'] = vhome.as_posix()
+
+        return vhome.as_posix()
 
     @classmethod
     def get_fq_identity(cls, identity, platform_instance_name=None):

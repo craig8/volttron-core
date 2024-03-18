@@ -34,6 +34,8 @@ state as there is with the gevent version in the green sub-module.
 
 from threading import local as _local
 
+DEFAULT_TIMEOUT = 30
+
 
 class BaseConnection(object):
     """

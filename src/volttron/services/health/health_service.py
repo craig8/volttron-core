@@ -22,24 +22,26 @@
 # ===----------------------------------------------------------------------===
 # }}}
 
+import logging
 from collections import defaultdict
 from datetime import datetime
-import logging
 
-from volttron.client.known_identities import CONTROL_CONNECTION, PROCESS_IDENTITIES
-from volttron.types import ServiceInterface
+from volttron.client.known_identities import (CONTROL_CONNECTION, PROCESS_IDENTITIES)
+from volttron.client.vip.agent import RPC, Agent, Core
+from volttron.server.decorators import service
+from volttron.types.bases import Service
 from volttron.utils import format_timestamp
-from volttron.client.vip.agent import Agent, Core, RPC
 
 # TODO: rmq addition
 # from volttron.utils.rmq_config_params import RMQConfig
 # from volttron.utils.rmq_setup import start_rabbit, RabbitMQStartError
-from volttron.services.auth.auth_service import AuthFile, AuthEntry
+#from volttron.services.auth.auth_service import AuthFile, AuthEntry
 
 _log = logging.getLogger(__name__)
 
 
-class HealthService(ServiceInterface):
+@service
+class HealthService(Service, Agent):
 
     def __init__(self, **kwargs):
         super(HealthService, self).__init__(**kwargs)
@@ -47,17 +49,18 @@ class HealthService(ServiceInterface):
         # Store the health stats for given peers in a dictionary with
         # keys being the identity of the connected agent.
         self._health_dict = defaultdict(dict)
-        entry = AuthEntry(
-            credentials=self.core.publickey,
-            user_id=self.core.identity,
-            capabilities=[{
-                "edit_config_store": {
-                    "identity": self.core.identity
-                }
-            }],
-            comments="Automatically added on health service init"
-        )
+        entry = AuthEntry(credentials=self.core.publickey,
+                          user_id=self.core.identity,
+                          capabilities=[{
+                              "edit_config_store": {
+                                  "identity": self.core.identity
+                              }
+                          }],
+                          comments="Automatically added on health service init")
         AuthFile().add(entry, overwrite=True)
+
+    def start(self, **kwargs):
+        _log.info("Health service started")
 
     def peer_added(self, peer):
         """
@@ -102,10 +105,7 @@ class HealthService(ServiceInterface):
         :return:
         """
         # Ignore the connection from control in the health as it will only be around for a short while.
-        agents = {
-            k: v
-            for k, v in self._health_dict.items() if not v.get("peer") == CONTROL_CONNECTION
-        }
+        agents = {k: v for k, v in self._health_dict.items() if not v.get("peer") == CONTROL_CONNECTION}
         return agents
 
     def _heartbeat_updates(self, peer, sender, bus, topic, headers, message):

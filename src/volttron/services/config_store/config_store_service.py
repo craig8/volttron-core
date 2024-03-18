@@ -22,32 +22,30 @@
 # ===----------------------------------------------------------------------===
 # }}}
 
-import logging
+import errno
 import glob
+import logging
 import os
 import os.path
-import errno
 from csv import DictReader
 from io import StringIO
-from deprecated import deprecated
-import gevent
+from typing import Optional
 
+import gevent
+from deprecated import deprecated
 from gevent.lock import Semaphore
 
-from volttron.types import ServiceInterface
-from volttron.utils import (
-    parse_json_config,
-    get_aware_utc_now,
-    format_timestamp,
-)
-from volttron.utils import jsonapi
-
+from volttron.client.known_identities import PLATFORM_CONFIG
+from volttron.client.vip.agent import RPC, Agent, Core, Unreachable, VIPError
+from volttron.server.containers import service_repo
+from volttron.server.decorators import service
+from volttron.types.auth import AuthService, CredentialsStore
+from volttron.types.auth.auth_credentials import Credentials, PKICredentials
+from volttron.types.bases import Service
+from volttron.utils import (format_timestamp, get_aware_utc_now, jsonapi, parse_json_config)
+from volttron.utils.jsonrpc import MethodNotFound, RemoteError
 from volttron.utils.persistance import PersistentDict
-
-from volttron.utils.jsonrpc import RemoteError, MethodNotFound
-from volttron.utils.storeutils import check_for_recursion, strip_config_name, store_ext
-from volttron.client.vip.agent import Agent, Core, RPC, Unreachable, VIPError
-from volttron.services.auth.auth_service import AuthFile, AuthEntry
+from volttron.utils.storeutils import (check_for_recursion, store_ext, strip_config_name)
 
 _log = logging.getLogger(__name__)
 
@@ -104,11 +102,31 @@ def process_raw_config(config_string, config_type="raw"):
     raise ValueError("Unsupported configuration type.")
 
 
-class ConfigStoreService(ServiceInterface):
+@service
+class ConfigStoreService(Service, Agent):
 
-    def __init__(self, **kwargs):
-        kwargs["enable_store"] = False
-        super(ConfigStoreService, self).__init__(**kwargs)
+    class Meta:
+        identity = PLATFORM_CONFIG
+
+    def start(self):
+        _log.debug("Starting config store service.")
+
+        # super(ConfigStoreService, self).start()
+        # self.initialize_configs(self.core.identity
+
+    def __init__(self, *, credential_store: CredentialsStore, auth_service: AuthService, **kwargs):
+
+        creds = Credentials(identity=self.Meta.identity)
+
+        # No auth service registered so use default Credentials.
+        if auth_service is None and credential_store is None:
+            creds = Credentials(identity=self.Meta.identity)
+        elif auth_service is not None and credential_store is not None:
+            creds = credential_store.retrieve_credentials(identity=self.Meta.identity)
+        else:
+            raise ValueError("Either AuthService and CredentialsStore must be provided or neither.")
+
+        super(ConfigStoreService, self).__init__(credentials=creds, **kwargs)
 
         # This agent is started before the router so we need
         # to keep it from blocking.
@@ -116,14 +134,11 @@ class ConfigStoreService(ServiceInterface):
 
         self.store = {}
         self.store_path = os.path.join(os.environ["VOLTTRON_HOME"], "configuration_store")
-        entry = AuthEntry(
-            credentials=self.core.publickey,
-            user_id=self.core.identity,
-            capabilities="sync_agent_config",
-            comments="Automatically added by config store service"
-        )
-        AuthFile().add(entry, overwrite=True)
-
+        # entry = AuthEntry(credentials=self.core.publickey,
+        #                   user_id=self.core.identity,
+        #                   capabilities="sync_agent_config",
+        #                   comments="Automatically added by config store service")
+        # AuthFile().add(entry, overwrite=True)
 
     @Core.receiver("onsetup")
     def _setup(self, sender, **kwargs):
@@ -159,22 +174,42 @@ class ConfigStoreService(ServiceInterface):
     @RPC.export
     @RPC.allow("edit_config_store")
     @deprecated(reason="Use set_config")
-    def manage_store(self, identity, config_name, raw_contents, config_type="raw", trigger_callback=True,
+    def manage_store(self,
+                     identity,
+                     config_name,
+                     raw_contents,
+                     config_type="raw",
+                     trigger_callback=True,
                      send_update=True):
         """
         This method is deprecated and will be removed in VOLTTRON 10. Please use set_config instead
         """
         contents = process_raw_config(raw_contents, config_type)
-        self._add_config_to_store(identity, config_name, raw_contents, contents, config_type,
-                                  trigger_callback=trigger_callback, send_update=send_update)
+        self._add_config_to_store(identity,
+                                  config_name,
+                                  raw_contents,
+                                  contents,
+                                  config_type,
+                                  trigger_callback=trigger_callback,
+                                  send_update=send_update)
 
     @RPC.export
     @RPC.allow('edit_config_store')
-    def set_config(self, identity, config_name, raw_contents, config_type="raw", trigger_callback=True,
+    def set_config(self,
+                   identity,
+                   config_name,
+                   raw_contents,
+                   config_type="raw",
+                   trigger_callback=True,
                    send_update=True):
         contents = process_raw_config(raw_contents, config_type)
-        self._add_config_to_store(identity, config_name, raw_contents, contents, config_type,
-                                  trigger_callback=trigger_callback, send_update=send_update)
+        self._add_config_to_store(identity,
+                                  config_name,
+                                  raw_contents,
+                                  contents,
+                                  config_type,
+                                  trigger_callback=trigger_callback,
+                                  send_update=send_update)
 
     @RPC.export
     @RPC.allow('edit_config_store')
@@ -221,10 +256,7 @@ class ConfigStoreService(ServiceInterface):
         if identity in self.vip.peerlist.peers_list:
             with agent_store_lock:
                 try:
-                    self.vip.rpc.call(identity,
-                                      "config.update",
-                                      "DELETE_ALL",
-                                      None,
+                    self.vip.rpc.call(identity, "config.update", "DELETE_ALL", None,
                                       trigger_callback=True).get(timeout=UPDATE_TIMEOUT)
                 except Unreachable:
                     _log.debug("Agent {} not currently running. Configuration update not sent.".format(identity))
@@ -360,8 +392,7 @@ class ConfigStoreService(ServiceInterface):
         if identity in self.vip.peerlist.peers_list:
             with agent_store_lock:
                 try:
-                    self.vip.rpc.call(identity, "config.initial_update",
-                                      agent_configs).get(timeout=UPDATE_TIMEOUT)
+                    self.vip.rpc.call(identity, "config.initial_update", agent_configs).get(timeout=UPDATE_TIMEOUT)
                 except Unreachable:
                     _log.debug("Agent {} not currently running. Configuration update not sent.".format(identity))
                 except RemoteError as e:
@@ -418,8 +449,8 @@ class ConfigStoreService(ServiceInterface):
                 except RemoteError as e:
                     _log.error("Agent {} failure when deleting configuration {}: {}".format(identity, config_name, e))
                 except MethodNotFound as e:
-                    _log.error(
-                        "Agent {} failure when adding/updating configuration {}: {}".format(identity, config_name, e))
+                    _log.error("Agent {} failure when adding/updating configuration {}: {}".format(
+                        identity, config_name, e))
 
         # If the store is empty (and nothing jumped in and added to it while we
         # were informing the agent) then remove it from the global store.
@@ -440,10 +471,21 @@ class ConfigStoreService(ServiceInterface):
         else:
             raise ValueError("Unsupported configuration content type: {}".format(str(type(contents))))
 
-        self._add_config_to_store(identity, config_name, raw_data, contents, config_type,
-                                  trigger_callback=trigger_callback, send_update=send_update)
+        self._add_config_to_store(identity,
+                                  config_name,
+                                  raw_data,
+                                  contents,
+                                  config_type,
+                                  trigger_callback=trigger_callback,
+                                  send_update=send_update)
 
-    def _add_config_to_store(self, identity, config_name, raw, parsed, config_type, trigger_callback=False,
+    def _add_config_to_store(self,
+                             identity,
+                             config_name,
+                             raw,
+                             parsed,
+                             config_type,
+                             trigger_callback=False,
                              send_update=True):
         """Adds a processed configuration to the store."""
         agent_store = self.store.get(identity)
@@ -507,11 +549,11 @@ class ConfigStoreService(ServiceInterface):
                 except Unreachable:
                     _log.debug("Agent {} not currently running. Configuration update not sent.".format(identity))
                 except RemoteError as e:
-                    _log.error(
-                        "Agent {} failure when adding/updating configuration {}: {}".format(identity, config_name, e))
+                    _log.error("Agent {} failure when adding/updating configuration {}: {}".format(
+                        identity, config_name, e))
                 except MethodNotFound as e:
-                    _log.error(
-                        "Agent {} failure when adding/updating configuration {}: {}".format(identity, config_name, e))
+                    _log.error("Agent {} failure when adding/updating configuration {}: {}".format(
+                        identity, config_name, e))
                 except gevent.timeout.Timeout:
                     _log.error("Config update to agent {} timed out after {} seconds".format(identity, UPDATE_TIMEOUT))
                 except Exception as e:

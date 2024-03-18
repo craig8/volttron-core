@@ -23,18 +23,15 @@
 # }}}
 from gevent import monkey
 
-from volttron.services.auth import AuthFile
-from volttron.services.auth.auth_service import AuthException, AuthEntry
+# from volttron.services.auth import AuthFile
+# from volttron.services.auth.auth_service import AuthException, AuthEntry
 
 monkey.patch_all()
-import gevent
-import gevent.event
-
 import argparse
 import collections
 import logging
-import logging.handlers
 import logging.config
+import logging.handlers
 import os
 import os as _os
 import re
@@ -42,13 +39,14 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List
-from datetime import timedelta, datetime
 
-# TODO Requests dependency
-# import requests
-# from requests.exceptions import ConnectionError
+import gevent
+import gevent.event
 
+from volttron.client.commands.connection import ControlConnection
 # from volttron.platform import aip as aipmod
 # from volttron.platform import config
 # from volttron.platform import get_home, get_address
@@ -71,27 +69,18 @@ from datetime import timedelta, datetime
 # from volttron.utils.rmq_setup import check_rabbit_status
 # from volttron.platform.agent.utils import is_secure_mode, wait_for_volttron_shutdown
 from volttron.client.commands.install_agents import add_install_agent_parser
-from volttron.client.commands.connection import ControlConnection
-
-from volttron.utils import ClientContext as cc, get_address
-from volttron.utils import jsonapi
-from volttron.utils import argparser as config
-from volttron.utils.commands import (
-    is_volttron_running,
-    wait_for_volttron_shutdown,
-)
-from volttron.utils.jsonrpc import MethodNotFound, RemoteError
-from volttron.utils.keystore import KeyStore, KnownHostsStore
-from volttron.utils import log_to_file
-
-from volttron.client.known_identities import (
-    CONFIGURATION_STORE,
-    PLATFORM_HEALTH,
-    AUTH,
-)
-
-from volttron.client.vip.agent.subsystems.query import Query
+from volttron.client.known_identities import (AUTH, CONFIGURATION_STORE, CONTROL_CONNECTION, PLATFORM_HEALTH)
 from volttron.client.vip.agent.errors import Unreachable, VIPError
+from volttron.client.vip.agent.subsystems.query import Query
+from volttron.utils import ClientContext as cc
+from volttron.utils import argparser as config
+from volttron.utils import jsonapi, log_to_file
+from volttron.utils.commands import (is_volttron_running, wait_for_volttron_shutdown)
+from volttron.utils.jsonrpc import MethodNotFound, RemoteError
+
+# TODO Requests dependency
+# import requests
+# from requests.exceptions import ConnectionError
 
 _stdout = sys.stdout
 _stderr = sys.stderr
@@ -121,15 +110,13 @@ def _list_agents(opts) -> List[AgentMeta]:
         List of AgentTuple
     """
     agents = opts.connection.call("list_agents")
-    return [
-        AgentMeta(
-            a["name"],
-            a.get("tag", ""),
-            a["uuid"],
-            a["identity"],
-            a.get("agent_user"),
-        ) for a in agents
-    ]
+    return [AgentMeta(
+        a["name"],
+        a.get("tag", ""),
+        a["uuid"],
+        a["identity"],
+        a.get("agent_user"),
+    ) for a in agents]
 
 
 def escape(pattern):
@@ -137,9 +124,7 @@ def escape(pattern):
     if len(strings) == 1:
         return re.escape(pattern), False
     return (
-        "".join(
-            ".*" if s == "*" else "." if s == "?" else s if s in [r"\?", r"\*"] else re.escape(s)
-            for s in strings),
+        "".join(".*" if s == "*" else "." if s == "?" else s if s in [r"\?", r"\*"] else re.escape(s) for s in strings),
         True,
     )
 
@@ -180,8 +165,7 @@ def filter_agents(agents: List[AgentMeta], patterns: List[str], opts: argparse.N
             if by_tag:
                 result.update(agent for agent in agents if reobj.match(agent.tag or ""))
             if by_all_tagged:
-                result.update(
-                    agent for agent in agents if reobj.match(agent.tag))
+                result.update(agent for agent in agents if reobj.match(agent.tag))
         yield pattern, result
 
 
@@ -191,31 +175,31 @@ def filter_agent(agents, pattern, opts):
 
 def backup_agent_data(output_filename, source_dir):
     with tarfile.open(output_filename, "w:gz") as tar:
-        tar.add(source_dir, arcname=os.path.sep)  # os.path.basename(source_dir))
+        tar.add(source_dir, arcname=os.path.sep)    # os.path.basename(source_dir))
 
 
 def restore_agent_data_from_tgz(source_file, output_dir):
     # Open tarfile
     with tarfile.open(source_file, mode="r:gz") as tar:
+
         def is_within_directory(directory, target):
-            
+
             abs_directory = os.path.abspath(directory)
             abs_target = os.path.abspath(target)
-        
+
             prefix = os.path.commonprefix([abs_directory, abs_target])
-            
+
             return prefix == abs_directory
-        
+
         def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
-        
+
             for member in tar.getmembers():
                 member_path = os.path.join(path, member.name)
                 if not is_within_directory(path, member_path):
                     raise Exception("Attempted Path Traversal in Tar File")
-        
-            tar.extractall(path, members, numeric_owner=numeric_owner) 
-            
-        
+
+            tar.extractall(path, members, numeric_owner=numeric_owner)
+
         safe_extract(tar, output_dir)
 
 
@@ -239,7 +223,7 @@ def tag_agent(opts):
             msg = "agent not found"
         _stderr.write("{}: error: {}: {}\n".format(opts.command, msg, opts.agent))
         return 10
-    (agent,) = agents
+    (agent, ) = agents
     if opts.tag:
         _stdout.write("Tagging {} {}\n".format(agent.uuid, agent.name))
         opts.connection.call("tag_agent", agent.uuid, opts.tag)
@@ -258,8 +242,7 @@ def remove_agent(opts, remove_auth=True):
         if not match:
             _stderr.write("{}: error: agent not found: {}\n".format(opts.command, pattern))
         elif len(match) > 1 and not opts.force:
-            _stderr.write("{}: error: pattern returned multiple agents: {}\n".format(
-                opts.command, pattern))
+            _stderr.write("{}: error: pattern returned multiple agents: {}\n".format(opts.command, pattern))
             _stderr.write("Use -f or --force to force removal of multiple agents.\n")
             return 10
         for agent in match:
@@ -280,6 +263,7 @@ def _calc_min_uuid_length(agents):
 
 
 def list_agents(opts):
+
     def get_priority(agent):
         return opts.aip.agent_priority(agent.uuid) or ""
 
@@ -310,22 +294,19 @@ def print_rpc_methods(opts, peer_method_metadata, code=False):
         else:
             print(f"{peer}")
         for method in peer_method_metadata[peer]:
-            params = peer_method_metadata[peer][method].get("params",
-                                                            "No parameters for this method.")
+            params = peer_method_metadata[peer][method].get("params", "No parameters for this method.")
             if code is True:
                 if len(params) == 0:
                     print(f"self.vip.rpc.call({peer}, {method}).get()")
                 else:
-                    print(
-                        f"self.vip.rpc.call({peer}, {method}, {[param for param in params]}).get()"
-                    )
+                    print(f"self.vip.rpc.call({peer}, {method}, {[param for param in params]}).get()")
                 continue
             else:
                 print(f"\t{method}")
                 if opts.verbose == True:
                     print("\tDocumentation:")
-                    doc = (peer_method_metadata[peer][method].get(
-                        "doc", "No documentation for this method.").replace("\n", "\n\t\t"))
+                    doc = (peer_method_metadata[peer][method].get("doc", "No documentation for this method.").replace(
+                        "\n", "\n\t\t"))
                     print(f"\t\t{doc}\n")
             print("\tParameters:")
             if type(params) is str:
@@ -349,8 +330,7 @@ def list_agents_rpc(opts):
         peer_method_metadata = {peer: {}}
         for method in methods:
             try:
-                peer_method_metadata[peer][method] = conn.server.vip.rpc.call(
-                    peer, f"{method}.inspect").get(timeout=4)
+                peer_method_metadata[peer][method] = conn.server.vip.rpc.call(peer, f"{method}.inspect").get(timeout=4)
             except gevent.Timeout:
                 print(f"{peer} has timed out.")
             except Unreachable:
@@ -364,8 +344,7 @@ def list_agents_rpc(opts):
     peer_methods = {}
     for peer in peers:
         try:
-            peer_methods[peer] = conn.server.vip.rpc.call(peer,
-                                                          "inspect").get(timeout=4)["methods"]
+            peer_methods[peer] = conn.server.vip.rpc.call(peer, "inspect").get(timeout=4)["methods"]
         except gevent.Timeout:
             print(f"{peer} has timed out")
         except Unreachable:
@@ -398,8 +377,7 @@ def list_agent_rpc_code(opts):
         peer_method_metadata = {peer: {}}
         for method in methods:
             try:
-                peer_method_metadata[peer][method] = conn.server.vip.rpc.call(
-                    peer, f"{method}.inspect").get(timeout=4)
+                peer_method_metadata[peer][method] = conn.server.vip.rpc.call(peer, f"{method}.inspect").get(timeout=4)
             except gevent.Timeout:
                 print(f"{peer} has timed out.")
             except Unreachable:
@@ -414,8 +392,7 @@ def list_agent_rpc_code(opts):
     peer_methods = {}
     for peer in peers:
         try:
-            peer_methods[peer] = conn.server.vip.rpc.call(peer,
-                                                          "inspect").get(timeout=4)["methods"]
+            peer_methods[peer] = conn.server.vip.rpc.call(peer, "inspect").get(timeout=4)["methods"]
         except gevent.Timeout:
             print(f"{peer} has timed out.")
         except Unreachable:
@@ -434,8 +411,7 @@ def list_agent_rpc_code(opts):
         peer_method_metadata[peer] = {}
         for method in peer_methods[peer]:
             try:
-                peer_method_metadata[peer][method] = conn.server.vip.rpc.call(
-                    peer, f"{method}.inspect").get(timeout=4)
+                peer_method_metadata[peer][method] = conn.server.vip.rpc.call(peer, f"{method}.inspect").get(timeout=4)
             except gevent.Timeout:
                 print(f"{peer} has timed out")
             except Unreachable:
@@ -475,8 +451,7 @@ def list_remotes(opts):
     except TimeoutError:
         print("Certs timed out")
     try:
-        approved_certs = conn.server.vip.rpc.call(AUTH,
-                                                  "get_authorization_approved").get(timeout=4)
+        approved_certs = conn.server.vip.rpc.call(AUTH, "get_authorization_approved").get(timeout=4)
         for value in approved_certs:
             output_view.append({"entry": value, "status": "APPROVED"})
     except TimeoutError:
@@ -508,9 +483,7 @@ def list_remotes(opts):
         output_view = [output for output in output_view if output["status"] == "PENDING"]
 
     elif opts.status is not None:
-        _stdout.write(
-            "Invalid parameter. Please use 'approved', 'denied', 'pending', or leave blank to list all.\n"
-        )
+        _stdout.write("Invalid parameter. Please use 'approved', 'denied', 'pending', or leave blank to list all.\n")
         return
 
     if len(output_view) == 0:
@@ -526,15 +499,14 @@ def list_remotes(opts):
     address_width = max(5, max(len(str(output["entry"]["address"])) for output in output_view))
     status_width = max(5, max(len(str(output["status"])) for output in output_view))
     fmt = "{:{}} {:{}} {:{}}\n"
-    _stderr.write(
-        fmt.format(
-            "USER_ID",
-            userid_width,
-            "ADDRESS",
-            address_width,
-            "STATUS",
-            status_width,
-        ))
+    _stderr.write(fmt.format(
+        "USER_ID",
+        userid_width,
+        "ADDRESS",
+        address_width,
+        "STATUS",
+        status_width,
+    ))
     fmt = "{:{}} {:{}} {:{}}\n"
     for output in output_view:
         _stdout.write(
@@ -604,15 +576,12 @@ def update_health_cache(opts):
     t_now = datetime.now()
     do_update = True
     # Make sure we update if we don't have any health dicts, or if the cache has timed out.
-    if (health_cache_timeout_date is not None and t_now < health_cache_timeout_date
-            and health_cache):
+    if (health_cache_timeout_date is not None and t_now < health_cache_timeout_date and health_cache):
         do_update = False
 
     if do_update:
         health_cache.clear()
-        health_cache.update(
-            opts.connection.server.vip.rpc.call(PLATFORM_HEALTH,
-                                                "get_platform_health").get(timeout=4))
+        health_cache.update(opts.connection.server.vip.rpc.call(PLATFORM_HEALTH, "get_platform_health").get(timeout=4))
         health_cache_timeout_date = datetime.now() + timedelta(seconds=health_cache_timeout)
 
 
@@ -630,11 +599,7 @@ def status_agents(opts):
             agent = all_agents[uuid]
             all_agents[uuid] = agent._replace(agent_user=agent_user)
         except KeyError:
-            all_agents[uuid] = agent = AgentMeta(name,
-                                             None,
-                                             uuid,
-                                             vip_identity=identity,
-                                             agent_user=agent_user)
+            all_agents[uuid] = agent = AgentMeta(name, None, uuid, vip_identity=identity, agent_user=agent_user)
         status[uuid] = stat
     all_agents = list(all_agents.values())
 
@@ -785,7 +750,7 @@ def act_on_agent(action: str, opts: argparse.Namespace):
             _stderr.write(f"{opts.command}: error: agent not found: {pattern}\n")
         for agent in match:
             pid, status = call("agent_status", agent.uuid)
-            _call_action_on_agent(agent, pid, status, call,  action)
+            _call_action_on_agent(agent, pid, status, call, action)
 
 
 def _call_action_on_agent(agent: AgentMeta, pid, status, call, action):
@@ -968,18 +933,19 @@ def list_auth(opts, indices=None):
 
 
 def _ask_for_auth_fields(
-        domain=None,
-        address=None,
-        user_id=None,
-        capabilities=None,
-        roles=None,
-        groups=None,
-        mechanism="CURVE",
-        credentials=None,
-        comments=None,
-        enabled=True,
-        **kwargs,
+    domain=None,
+    address=None,
+    user_id=None,
+    capabilities=None,
+    roles=None,
+    groups=None,
+    mechanism="CURVE",
+    credentials=None,
+    comments=None,
+    enabled=True,
+    **kwargs,
 ):
+
     class Asker(object):
 
         def __init__(self):
@@ -1510,12 +1476,12 @@ def _show_filtered_agents_status(opts, status_callback, health_callback, priorit
             }
             if cc.is_secure_mode():
                 json_obj[agent.vip_identity]["agent_user"] = (
-                    agent.agent_user
-                    if json_obj[agent.vip_identity]["status"].startswith("running") else "")
+                    agent.agent_user if json_obj[agent.vip_identity]["status"].startswith("running") else "")
         _stdout.write(f"{jsonapi.dumps(json_obj, indent=2)}\n")
 
 
 def get_agent_publickey(opts):
+
     def get_key(agent):
         return opts.aip.get_agent_keystore(agent.uuid).public
 
@@ -1633,8 +1599,7 @@ def edit_config(opts):
             #  subprocess.PIPE
             subprocess.check_call([opts.editor, f.name])
         except subprocess.CalledProcessError as e:
-            _stderr.write("Editor returned with code {}. Changes not committed.\n".format(
-                e.returncode))
+            _stderr.write("Editor returned with code {}. Changes not committed.\n".format(e.returncode))
             success = False
 
         if not success:
@@ -2139,9 +2104,28 @@ def main():
                          "potential damage.\n" % os.path.basename(sys.argv[0]))
         sys.exit(77)
 
-    volttron_home = cc.get_volttron_home()
+    logging.basicConfig(level=logging.DEBUG)
 
-    os.environ["VOLTTRON_HOME"] = volttron_home
+    import sys
+    from pathlib import Path
+
+    from volttron.client.decorators import get_core_builder
+    from volttron.types.blinker import volttron_home_set_evnt
+    #from volttron.loader import load_dir
+    # Important that this module is loaded before the rest of this function is called.
+    from volttron.types.known_host import \
+        KnownHostProperties as known_host_properties
+
+    volttron_path = Path(__file__).parent.parent.parent
+    _log.debug(sys.path)
+    #load_dir("volttron", volttron_path)
+    assert get_core_builder()
+    volttron_home = cc.get_volttron_home()
+    volttron_home_set_evnt.send(main)
+
+    os.environ["VOLTTRON_CREDENTIALS_TYPE"] = "pki"
+    server_cred_path = Path(volttron_home) / "credentials_store" / f"server.json"
+    os.environ["VOLTTRON_SERVER_CREDENTIALS"] = server_cred_path.as_posix()
 
     global_args = config.ArgumentParser(description="global options", add_help=False)
     global_args.add_argument(
@@ -2173,7 +2157,7 @@ def main():
     )
 
     global_args.set_defaults(
-        vip_address=get_address(),
+        vip_address="tcp://127.0.0.1:22916",    # get_address(),
         timeout=60,
     )
 
@@ -2190,10 +2174,10 @@ def main():
         action="store_true",
         help="filter/search by tag name. value passed should be quoted if it contains a regular expression",
     )
-    filterable.add_argument(
-        "--all-tagged", dest="by_all_tagged", action="store_true",
-        help="filter/search by all tagged agents"
-    )
+    filterable.add_argument("--all-tagged",
+                            dest="by_all_tagged",
+                            action="store_true",
+                            help="filter/search by all tagged agents")
     filterable.add_argument(
         "--uuid",
         dest="by_uuid",
@@ -2290,7 +2274,7 @@ def main():
     peers = add_parser("peerlist", help="list the peers connected to the platform")
     peers.set_defaults(func=list_peers)
 
-    status = add_parser("status", aliases=("list",), parents=[filterable], help="show status of agents")
+    status = add_parser("status", aliases=("list", ), parents=[filterable], help="show status of agents")
     status.add_argument("pattern", nargs="*", help="UUID or name of agent")
     status.add_argument(
         "-n",
@@ -2369,7 +2353,7 @@ def main():
         "pattern",
         nargs="*",
         help="Identity of agent, followed by method(s)"
-             "",
+        "",
     )
     rpc_code.add_argument(
         "-v",
@@ -2401,7 +2385,7 @@ def main():
         "--verbose",
         action="store_true",
         help="list all subsystem rpc methods in addition to the agent's rpc methods. If a method "
-             "is specified, display the doc-string associated with the method.",
+        "is specified, display the doc-string associated with the method.",
     )
 
     rpc_list.set_defaults(func=list_agents_rpc, min_uuid_len=1)
@@ -2434,9 +2418,7 @@ def main():
     # ====================================================
     auth_cmds = add_parser("auth", help="manage authorization entries and encryption keys")
 
-    auth_subparsers = auth_cmds.add_subparsers(title="subcommands",
-                                               metavar="",
-                                               dest="store_commands")
+    auth_subparsers = auth_cmds.add_subparsers(title="subcommands", metavar="", dest="store_commands")
 
     auth_add = add_parser("add", help="add new authentication record", subparser=auth_subparsers)
     auth_add.add_argument("--domain", default=None)
@@ -2647,9 +2629,7 @@ def main():
         subparser=auth_subparsers,
         help="manage pending RMQ certs and ZMQ credentials",
     )
-    auth_remote_subparsers = auth_remote.add_subparsers(title="remote subcommands",
-                                                        metavar="",
-                                                        dest="store_commands")
+    auth_remote_subparsers = auth_remote.add_subparsers(title="remote subcommands", metavar="", dest="store_commands")
 
     auth_remote_list_cmd = add_parser(
         "list",
@@ -2697,9 +2677,7 @@ def main():
     # ====================================================
     config_store = add_parser("config", help="manage the platform configuration store")
 
-    config_store_subparsers = config_store.add_subparsers(title="subcommands",
-                                                          metavar="",
-                                                          dest="store_commands")
+    config_store_subparsers = config_store.add_subparsers(title="subcommands", metavar="", dest="store_commands")
 
     config_store_store = add_parser(
         "store",
@@ -2708,8 +2686,7 @@ def main():
     )
 
     config_store_store.add_argument("identity", help="VIP IDENTITY of the store")
-    config_store_store.add_argument(
-        "name", help="name used to reference the configuration by in the store")
+    config_store_store.add_argument("name", help="name used to reference the configuration by in the store")
     config_store_store.add_argument(
         "infile",
         nargs="?",
@@ -2748,8 +2725,7 @@ def main():
     )
 
     config_store_edit.add_argument("identity", help="VIP IDENTITY of the store")
-    config_store_edit.add_argument("name",
-                                   help="name used to reference the configuration by in the store")
+    config_store_edit.add_argument("name", help="name used to reference the configuration by in the store")
     config_store_edit.add_argument(
         "--editor",
         dest="editor",
@@ -2782,7 +2758,7 @@ def main():
         dest="new_config",
         action="store_true",
         help="Ignore any existing configuration and creates new empty file."
-             " Configuration is not written if left empty. Type defaults to JSON.",
+        " Configuration is not written if left empty. Type defaults to JSON.",
     )
 
     config_store_edit.set_defaults(func=edit_config, config_type="json")
@@ -2824,11 +2800,8 @@ def main():
     )
 
     config_store_get.add_argument("identity", help="VIP IDENTITY of the store")
-    config_store_get.add_argument("name",
-                                  help="name used to reference the configuration by in the store")
-    config_store_get.add_argument("--raw",
-                                  action="store_true",
-                                  help="get the configuration as raw data")
+    config_store_get.add_argument("name", help="name used to reference the configuration by in the store")
+    config_store_get.add_argument("--raw", action="store_true", help="get the configuration as raw data")
     config_store_get.set_defaults(func=get_config)
 
     shutdown = add_parser("shutdown", help="stop all agents")
@@ -2850,125 +2823,6 @@ def main():
     # ==============================================================================
     global message_bus, rmq_mgmt
 
-    # if message_bus == 'rmq':
-    # rmq_mgmt = RabbitMQMgmt()
-    # # ====================================================
-    # # rabbitmq commands
-    # # ====================================================
-    # rabbitmq_cmds = add_parser("rabbitmq", help="manage rabbitmq")
-    # rabbitmq_subparsers = rabbitmq_cmds.add_subparsers(title='subcommands',
-    #                                                    metavar='',
-    #                                                    dest='store_commands')
-    # rabbitmq_add_vhost = add_parser('add-vhost', help='add a new virtual host',
-    #                                 subparser=rabbitmq_subparsers)
-    # rabbitmq_add_vhost.add_argument('vhost', help='Virtual host')
-    # rabbitmq_add_vhost.set_defaults(func=add_vhost)
-
-    # rabbitmq_add_user = add_parser('add-user',
-    #                                help='Add a new user. User will have admin privileges i.e,'
-    #                                     'configure, read and write',
-    #                                subparser=rabbitmq_subparsers)
-    # rabbitmq_add_user.add_argument('user', help='user id')
-    # rabbitmq_add_user.add_argument('pwd', help='password')
-    # rabbitmq_add_user.set_defaults(func=add_user)
-
-    # rabbitmq_add_exchange = add_parser('add-exchange',
-    #                                    help='add a new exchange',
-    #                                    subparser=rabbitmq_subparsers)
-    # rabbitmq_add_exchange.add_argument('name', help='Name of the exchange')
-    # rabbitmq_add_exchange.add_argument('type', help='Type of the exchange - fanout/direct/topic')
-    # rabbitmq_add_exchange.set_defaults(func=add_exchange)
-
-    # rabbitmq_add_queue = add_parser('add-queue',
-    #                                 help='add a new queue',
-    #                                 subparser=rabbitmq_subparsers)
-    # rabbitmq_add_queue.add_argument('name', help='Name of the queue')
-    # rabbitmq_add_queue.set_defaults(func=add_queue)
-    # # =======================================================================
-    # # List commands
-    # rabbitmq_list_vhosts = add_parser('list-vhosts', help='List virtual hosts',
-    #                                   subparser=rabbitmq_subparsers)
-    # rabbitmq_list_vhosts.set_defaults(func=list_vhosts)
-
-    # rabbitmq_list_users = add_parser('list-users', help='List users',
-    #                                  subparser=rabbitmq_subparsers)
-    # rabbitmq_list_users.set_defaults(func=list_users)
-
-    # rabbitmq_list_user_properties = add_parser('list-user-properties', help='List users',
-    #                                            subparser=rabbitmq_subparsers)
-    # rabbitmq_list_user_properties.add_argument('user', help='RabbitMQ user id')
-    # rabbitmq_list_user_properties.set_defaults(func=list_user_properties)
-
-    # rabbitmq_list_exchanges = add_parser('list-exchanges', help='List exhanges',
-    #                                      subparser=rabbitmq_subparsers)
-    # rabbitmq_list_exchanges.set_defaults(func=list_exchanges)
-
-    # rabbitmq_list_exchanges_props = add_parser('list-exchange-properties', help='list exchanges with properties',
-    #                                            subparser=rabbitmq_subparsers)
-    # rabbitmq_list_exchanges_props.set_defaults(func=list_exchanges_with_properties)
-
-    # rabbitmq_list_queues = add_parser('list-queues', help='list all queues',
-    #                                   subparser=rabbitmq_subparsers)
-    # rabbitmq_list_queues.set_defaults(func=list_queues)
-    # rabbitmq_list_queues_props = add_parser('list-queue-properties', help='list queues with properties',
-    #                                         subparser=rabbitmq_subparsers)
-    # rabbitmq_list_queues_props.set_defaults(func=list_queues_with_properties)
-
-    # rabbitmq_list_bindings = add_parser('list-bindings', help='list all bindings with exchange',
-    #                                     subparser=rabbitmq_subparsers)
-    # rabbitmq_list_bindings.add_argument('exchange', help='Source exchange')
-    # rabbitmq_list_bindings.set_defaults(func=list_bindings)
-
-    # rabbitmq_list_fed_parameters = add_parser('list-federation-parameters', help='list all federation parameters',
-    #                                           subparser=rabbitmq_subparsers)
-    # rabbitmq_list_fed_parameters.set_defaults(func=list_fed_parameters)
-
-    # rabbitmq_list_shovel_parameters = add_parser('list-shovel-parameters', help='list all shovel parameters',
-    #                                              subparser=rabbitmq_subparsers)
-    # rabbitmq_list_shovel_parameters.set_defaults(func=list_shovel_parameters)
-
-    # rabbitmq_list_policies = add_parser('list-policies', help='list all policies',
-    #                                     subparser=rabbitmq_subparsers)
-    # rabbitmq_list_policies.set_defaults(func=list_policies)
-    # # ==========================================================================================
-    # # Remove commands
-    # rabbitmq_remove_vhosts = add_parser('remove-vhosts', help='Remove virtual host/s',
-    #                                     subparser=rabbitmq_subparsers)
-    # rabbitmq_remove_vhosts.add_argument('vhost', nargs='+', help='Virtual host')
-    # rabbitmq_remove_vhosts.set_defaults(func=remove_vhosts)
-
-    # rabbitmq_remove_users = add_parser('remove-users', help='Remove virtual user/s',
-    #                                    subparser=rabbitmq_subparsers)
-    # rabbitmq_remove_users.add_argument('user', nargs='+', help='Virtual host')
-    # rabbitmq_remove_users.set_defaults(func=remove_users)
-
-    # rabbitmq_remove_exchanges = add_parser('remove-exchanges', help='Remove exchange/s',
-    #                                        subparser=rabbitmq_subparsers)
-    # rabbitmq_remove_exchanges.add_argument('exchanges', nargs='+', help='Remove exchanges/s')
-    # rabbitmq_remove_exchanges.set_defaults(func=remove_exchanges)
-
-    # rabbitmq_remove_queues = add_parser('remove-queues', help='Remove queue/s',
-    #                                     subparser=rabbitmq_subparsers)
-    # rabbitmq_remove_queues.add_argument('queues', nargs='+', help='Queue')
-    # rabbitmq_remove_queues.set_defaults(func=remove_queues)
-
-    # rabbitmq_remove_fed_parameters = add_parser('remove-federation-parameters',
-    #                                             help='Remove federation parameter',
-    #                                             subparser=rabbitmq_subparsers)
-    # rabbitmq_remove_fed_parameters.add_argument('parameters', nargs='+', help='parameter name/s')
-    # rabbitmq_remove_fed_parameters.set_defaults(func=remove_fed_parameters)
-
-    # rabbitmq_remove_shovel_parameters = add_parser('remove-shovel-parameters',
-    #                                                help='Remove shovel parameter',
-    #                                                subparser=rabbitmq_subparsers)
-    # rabbitmq_remove_shovel_parameters.add_argument('parameters', nargs='+', help='parameter name/s')
-    # rabbitmq_remove_shovel_parameters.set_defaults(func=remove_shovel_parameters)
-
-    # rabbitmq_remove_policies = add_parser('remove-policies', help='Remove policy',
-    #                                       subparser=rabbitmq_subparsers)
-    # rabbitmq_remove_policies.add_argument('policies', nargs='+', help='policy name/s')
-    # rabbitmq_remove_policies.set_defaults(func=remove_policies)
-
     # Parse and expand options
     args = sys.argv[1:]
 
@@ -2977,13 +2831,14 @@ def main():
     # function
     # Below vctl commands can work even when volttron is not up. For others
     # volttron need to be up.
-    if len(args) > 0:
-        if args[0] not in ("list", "tag", "auth", "rabbitmq", "certs"):
-            # check pid file
-            if not is_volttron_running(volttron_home):
-                _stderr.write("VOLTTRON is not running. This command "
-                              "requires VOLTTRON platform to be running\n")
-                return 10
+    # TODO MUST BE REENABLED!
+    # if len(args) > 0:
+    #     if args[0] not in ("list", "tag", "auth", "rabbitmq", "certs"):
+    #         # check pid file
+    #         if not is_volttron_running(volttron_home):
+    #             _stderr.write("VOLTTRON is not running. This command "
+    #                           "requires VOLTTRON platform to be running\n")
+    #             return 10
 
     conf = os.path.join(volttron_home, "config")
     if os.path.exists(conf) and "SKIP_VOLTTRON_CONFIG" not in os.environ:
@@ -3014,6 +2869,7 @@ def main():
         logging.config.fileConfig(opts.log_config)
 
     opts.connection = ControlConnection(opts.vip_address)
+    opts.func(opts)
     # opts.connection: ControlConnection = None
     # if is_volttron_running(volttron_home):
     #     opts.connection = ControlConnection(opts.vip_address)
@@ -3033,8 +2889,7 @@ def main():
         print_tb = exc.print_tb
         error = exc.message
     except AttributeError as exc:
-        _stderr.write("Invalid command: '{}' or command requires additional arguments\n".format(
-            opts.command))
+        _stderr.write("Invalid command: '{}' or command requires additional arguments\n".format(opts.command))
         parser.print_help()
         return 1
     # raised during install if wheel not found.
@@ -3075,10 +2930,10 @@ def main():
 
 
 def _main():
-    try:
-        sys.exit(main())
-    except KeyboardInterrupt:
-        sys.exit(1)
+    #try:
+    sys.exit(main())
+    #except KeyboardInterrupt:
+    #    sys.exit(1)
 
 
 if __name__ == "__main__":

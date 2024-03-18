@@ -5,20 +5,19 @@ import inspect
 import logging
 import sys
 import traceback
+from pathlib import Path
 from types import ModuleType
 from typing import List, Type
-from pathlib import Path
 
 from volttron.utils import logtrace
 
 __all__: List[str] = ["get_module", "get_class", "get_subclasses", "load_dir"]
 
+__loaded__: set[str] = set()
 _log = logging.getLogger(__name__)
 
-__loaded__: set[str] = set()
 
-
-@logtrace
+#@logtrace
 def load_dir(package: str, pth: Path):
     """
     Recursively loads all modules within a directory.
@@ -59,7 +58,7 @@ def load_dir(package: str, pth: Path):
 
         new_package = f"{package}.{get_mod_name(p)}"
 
-        if new_package.endswith("__init__"):
+        if new_package.endswith("__init__") or new_package.endswith('.mypy_cache'):
             _log.debug(f"Skipping {new_package}")
             continue
 
@@ -76,7 +75,10 @@ def load_dir(package: str, pth: Path):
                 traceback.print_exc()
                 _log.error(f"Failed to import {new_package} due to {ex}")
                 raise
-                continue
+            except SyntaxError as ex:
+                traceback.print_exc()
+                _log.error(f"Failed to import due to parse error {new_package}")
+                raise
             # after = set(globals().keys())
             # print("After import")
             # print(before - after)

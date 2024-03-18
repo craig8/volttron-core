@@ -1,13 +1,15 @@
 from __future__ import annotations
-from re import match
-import typing
-from typing import TypeVar, get_type_hints, Union, Optional
-import logging
+
 import inspect
+import logging
+import typing
+from re import match
+from typing import Optional, TypeVar, Union, get_type_hints
+
 import returns
-from returns.maybe import Maybe, Some, Nothing, maybe
-from returns.result import Result, Success, Failure
+from returns.maybe import Maybe, Nothing, Some, maybe
 from returns.pipeline import pipe
+from returns.result import Failure, Result, Success
 
 _log = logging.getLogger(__name__)
 
@@ -91,15 +93,25 @@ class Container:
     def _resolve_argument(self, field: T) -> Result[T, None]:
 
         resolved = None
-        if field in self._resolvable:
+        if self.is_optional_type(field):
+            for t in typing.get_args(field):
+                if t is None:
+                    continue
+                if t in self._resolvable:
+                    container = self._resolvable[t]
+                    if isinstance(container, Container.Resolvable):
+                        resolved = container.resolve()
+                        break
+                    else:
+                        resolved = Success(container)
+            if not resolved:
+                resolved = Success(None)
+        elif field in self._resolvable:
             container = self._resolvable[field]
             if isinstance(container, Container.Resolvable):
                 resolved = container.resolve()
             else:
                 resolved = Success(container)
-        else:
-            if self.is_optional_type(field):
-                resolved = Success(None)
                 #resolved = self._resolve_optional_argument(field)
 
             #resolved = Failure(f"Couldn't resolve {field}")

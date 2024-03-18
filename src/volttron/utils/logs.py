@@ -62,6 +62,19 @@ def isapipe(fd):
     return stat.S_ISFIFO(os.fstat(fd).st_mode)
 
 
+__enable_trace__ = False
+
+
+def enable_trace():
+    global __enable_trace__
+    __enable_trace__ = True
+
+
+def disable_trace():
+    global __enable_trace__
+    __enable_trace__ = False
+
+
 def logtrace(func: callable, *args, **kwargs):
     """
     Decorator that logs the function call and return value.
@@ -81,13 +94,16 @@ def logtrace(func: callable, *args, **kwargs):
     @return: The decorated function.
     @rtype: callable
     """
-    logger = logging.getLogger(func.__name__)
+    enabled = kwargs.pop('enabled', False)
+    logger = logging.getLogger(func.__module__)
     sig = inspect.signature(func)
 
     def do_logging(*args, **kwargs):
-        logger.debug(f"{func.__name__}{sig} called with {args}, {kwargs}")
+        if __enable_trace__:
+            logger.debug(f"-->{func.__name__}{sig} called with {args}, {kwargs}")
         ret = func(*args, **kwargs)
-        logger.debug(f"{func.__name__} returned: {ret}")
+        if __enable_trace__:
+            logger.debug(f"<--{func.__name__} returned: {ret}")
         return ret
 
     return do_logging
@@ -145,8 +161,7 @@ def log_to_file(file, level=logging.WARNING, handler_class=logging.StreamHandler
     """Direct log output to a file (or something like one)."""
     handler = handler_class(file)
     handler.setLevel(level)
-    handler.setFormatter(
-        AgentFormatter("%(asctime)s %(composite_name)s %(levelname)s: %(message)s"))
+    handler.setFormatter(AgentFormatter("%(asctime)s %(composite_name)s %(levelname)s: %(message)s"))
     root = logging.getLogger()
     root.setLevel(level)
     root.addHandler(handler)

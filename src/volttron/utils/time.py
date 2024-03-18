@@ -32,11 +32,13 @@ __all__ = [
 ]
 
 import calendar
-from datetime import datetime
-from dateutil.parser import parse
-from dateutil.tz import tzutc, tzoffset
 import logging
+from datetime import datetime
+from typing import Optional
+
 import pytz
+from dateutil.parser import parse
+from dateutil.tz import tzoffset, tzutc
 from tzlocal import get_localzone
 
 _log = logging.getLogger(__name__)
@@ -83,7 +85,7 @@ def parse_timestamp_string(time_stamp_str):
     YYYY-MM-DDTHH:MM:SS.mmmmmm+HH:MM
     based on the string length before falling back to dateutil.parse.
 
-    @param time_stamp_str:
+    :param time_stamp_str:
     @return: value to convert
     """
 
@@ -128,12 +130,12 @@ def get_aware_utc_now():
     return utcnow
 
 
-def get_utc_seconds_from_epoch(timestamp=None):
+def get_utc_seconds_from_epoch(timestamp: Optional[datetime] = None):
     """
     convert a given time stamp to seconds from epoch based on utc time. If
     given time is naive datetime it is considered be local to where this
     code is running.
-    @param timestamp: datetime object
+    :param timestamp: datetime object
     @return: seconds from epoch
     """
 
@@ -161,12 +163,14 @@ def get_utc_seconds_from_epoch(timestamp=None):
     return seconds_from_epoch
 
 
-def process_timestamp(timestamp_string, topic=""):
+def process_timestamp(timestamp_string: str, topic=""):
     """
     Convert timestamp string timezone aware utc timestamp
-    @param timestamp_string: datetime string to parse
-    @param topic: topic to which parse errors are published
-    @return: UTC datetime object and the original timezone of input datetime
+
+    :param timestamp_string: datetime string to parse
+    :param topic: topic to which parse errors are published
+
+    :return: UTC datetime object and the original timezone of input datetime
     """
     if timestamp_string is None:
         _log.error("message for {topic} missing timetamp".format(topic=topic))
@@ -175,8 +179,8 @@ def process_timestamp(timestamp_string, topic=""):
     try:
         timestamp = parse_timestamp_string(timestamp_string)
     except (ValueError, TypeError):
-        _log.error("message for {topic} bad timetamp string: {ts_string}".format(
-            topic=topic, ts_string=timestamp_string))
+        _log.error("message for {topic} bad timetamp string: {ts_string}".format(topic=topic,
+                                                                                 ts_string=timestamp_string))
         return
 
     if timestamp.tzinfo is None:
@@ -189,12 +193,10 @@ def process_timestamp(timestamp_string, topic=""):
 
 
 def fix_sqlite3_datetime(sql=None):
-    """Primarily for fixing the base historian cache on certain versions
-    of python.
+    """Primarily for fixing the base historian cache on certain versions of python.
 
     Registers a new datetime converter to that uses dateutil parse. This
-    should
-    better resolve #216, #174, and #91 without the goofy workarounds that
+    should better resolve #216, #174, and #91 without the goofy workarounds that
     change data.
 
     Optional sql argument is for testing only.

@@ -25,10 +25,12 @@
 import logging
 import weakref
 
-from .base import SubsystemBase
+from volttron.client.vip.agent.core import Core
+from volttron.utils import jsonapi
+
 from ..dispatch import Signal
 from ..results import ResultsDictionary
-from volttron.utils import jsonapi
+from .base import SubsystemBase
 
 __all__ = ["PeerList"]
 
@@ -37,7 +39,7 @@ _log = logging.getLogger(__name__)
 
 class PeerList(SubsystemBase):
 
-    def __init__(self, core):
+    def __init__(self, *, core: Core):
         self.core = weakref.ref(core)
         self._results = ResultsDictionary()
         core.register("peerlist", self._handle_subsystem, self._handle_error)

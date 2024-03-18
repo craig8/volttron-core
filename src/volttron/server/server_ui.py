@@ -21,7 +21,6 @@
 #
 # ===----------------------------------------------------------------------===
 # }}}
-
 """Advanced argument parser.
 
 Fully compatible with argparse, and can be used as a drop-in
@@ -39,7 +38,7 @@ import os as _os
 import re as _re
 import shlex as _shlex
 import sys as _sys
-from volttron.platform.instance_setup import main
+#from volttron.platform.instance_setup import main
 
 
 def expandall(string):
@@ -188,8 +187,7 @@ class ConfigFileAction(_argparse.Action):
                     if self.sections is not None and section not in self.sections:
                         continue
                     source = ("config", (path, lineno, key))
-                    opt = TrackingString((key if key.startswith("--") else ("--" + key)),
-                                         source=source)
+                    opt = TrackingString((key if key.startswith("--") else ("--" + key)), source=source)
                     try:
                         action = parser._option_string_actions[opt]
                     except KeyError:
@@ -197,24 +195,17 @@ class ConfigFileAction(_argparse.Action):
                             continue
                         parser.error("{} (line {}): unknown option: {}".format(path, lineno, key))
                     if not getattr(action, "config", allow_in_config):
-                        parser.error("{} (line {}): option not allowed: {}".format(
-                            path, lineno, key))
+                        parser.error("{} (line {}): option not allowed: {}".format(path, lineno, key))
                     if isinstance(action, ConfigFileAction):
                         if args is None or len(args) != 1:
-                            parser.error("{} (line {}): option expects one argument: {}".format(
-                                path, lineno, key))
-                        for arg_list in self(parser,
-                                             namespace,
-                                             args[0],
-                                             opt,
-                                             seen_files=seen_files):
+                            parser.error("{} (line {}): option expects one argument: {}".format(path, lineno, key))
+                        for arg_list in self(parser, namespace, args[0], opt, seen_files=seen_files):
                             arg_strings.extend(arg_list)
                     else:
                         if action.nargs == 0 and args:
                             if len(args) > 1:
                                 parser.error("{} (line {}): option expects no "
-                                             "more than one argument: {}".format(
-                                                 path, lineno, key))
+                                             "more than one argument: {}".format(path, lineno, key))
                             opt = parser.get_switch(action, args[0], opt)
                             arg_strings.append(TrackingString(opt, source=source))
                         else:
@@ -358,8 +349,8 @@ class ArgumentParser(_argparse.ArgumentParser):
         if self._subparsers is not None:
             subcommands = {
                 name
-                for action in self._subparsers._group_actions
-                if hasattr(action, "_name_parser_map") for name in action._name_parser_map
+                for action in self._subparsers._group_actions if hasattr(action, "_name_parser_map")
+                for name in action._name_parser_map
             }
         else:
             subcommands = set()
@@ -511,8 +502,7 @@ class TrackingArgumentParser(ArgumentParser):
         def __call__(action, parser, namespace, values, option_string=None, **kwargs):
             source = getattr(option_string, "source", ("command-line", option_string))
             self.pre_action(action, parser, namespace, values, option_string, source)
-            result = super(action.__class__, action).__call__(parser, namespace, values,
-                                                              option_string, **kwargs)
+            result = super(action.__class__, action).__call__(parser, namespace, values, option_string, **kwargs)
             self.post_action(action, parser, namespace, values, option_string, source)
             return result
 
@@ -520,10 +510,7 @@ class TrackingArgumentParser(ArgumentParser):
             cls = action.__class__
             if getattr(cls, "_trackable", False):
                 continue
-            action.__class__ = type(cls.__name__, (cls, ), {
-                "__call__": __call__,
-                "_trackable": True
-            })
+            action.__class__ = type(cls.__name__, (cls, ), {"__call__": __call__, "_trackable": True})
 
     def pre_action(self, action, parser, namespace, values, option_string, source):
         pass

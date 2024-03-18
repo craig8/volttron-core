@@ -5,17 +5,25 @@ decorators.py
 This module contains a factory registration function and several instances of it. It also
 includes a function for logging traces.
 """
-import logging
 import inspect
-from typing import TypeVar
-from typing import Protocol
-from volttron.types.protocols import (Connection, MessageBus, Service, RequiresServiceIdentity)
-from volttron.types.auth import (AuthService, Authorizer, Authenticator, CredentialsStore, CredentialsManager,
-                                 AuthorizationManager)
+import logging
+import typing
+from typing import TYPE_CHECKING, TypeVar
+
+from volttron.client.vip.agent.core import Core
+from volttron.server.containers import service_repo
+from volttron.types.auth import (Authenticator, AuthorizationManager, Authorizer, AuthService, Credentials,
+                                 CredentialsCreator, CredentialsStore)
+from volttron.types.bases import (AgentBuilder, AgentExecutor, AgentStarter, Connection, MessageBus, Service)
+from volttron.types.factories import ConnectionBuilder, CoreBuilder
 from volttron.utils.logs import logtrace
 
+_log = logging.getLogger(__name__)
 
-def factory_registration(registy_name: str, protocol: Protocol = None):
+T = TypeVar('T')
+
+
+def factory_registration(registy_name: str, protocol: T = None, singleton: bool = True, allow_many: bool = False):
     """
     Create a factory registration function.
 
@@ -27,9 +35,18 @@ def factory_registration(registy_name: str, protocol: Protocol = None):
     @return: The factory registration function.
     @rtype: function
     """
+    if protocol:
+        _log.info(
+            f"Setting registry for {registy_name} using protocol: {protocol.__name__} as singleton: {singleton} allowing many: {allow_many}"
+        )
+    else:
+        _log.info(
+            f"Setting registry for {registy_name} without protocol as singleton: {singleton} allowing many: {allow_many}"
+        )
 
-    def register(cls):
+    def register(cls, **kwargs):
         lookup_key = None
+
         if hasattr(cls, 'Meta'):
             # Meta can either have a name or an identity, but not both.
             # We use either one of the values as a lookup for the register.
@@ -45,12 +62,24 @@ def factory_registration(registy_name: str, protocol: Protocol = None):
         if lookup_key is None:
             raise ValueError(f"{cls.__name__} does not have an internal Meta class with identity or name.")
 
-        if protocol is not None and not isinstance(cls, protocol):
+        # args = typing.get_args(protocol)
+        # if
+        if protocol is not None and not protocol in cls.__bases__ and not isinstance(cls, protocol):
             raise ValueError(f"{cls.__name__} doesn't implement {protocol}")
 
+        if singleton:
+            if allow_many:
+                service_repo.add_concrete_reference(protocol, cls, kwargs=kwargs)
+            else:
+                service_repo.add_interface_reference(protocol, cls, kwargs=kwargs)
+        else:
+            service_repo.add_factory(cls, cls, kwargs=kwargs)
+
         if lookup_key is None:
-            print("Lookup key is none!")
-        print(f"Registering {cls.__name__} as a {lookup_key}")
+            _log.warning("registration lookup key is None")
+        else:
+            _log.debug(f"Registering {cls.__name__} as a {lookup_key}")
+
         if lookup_key in register.registry:
             raise ValueError(f"{lookup_key} already in register for {register.name}.")
         register.registry[lookup_key] = cls
@@ -61,16 +90,28 @@ def factory_registration(registy_name: str, protocol: Protocol = None):
     return register
 
 
+factory = factory_registration("factories")
+
+# Allow many so lookup based upon concrete class rather than interface.
+service = factory_registration("service", protocol=Service, singleton=True, allow_many=True)
+
+credentials_store = factory_registration("credentials_store", protocol=CredentialsStore)
+credentials_creator = factory_registration("credentials_creator", protocol=CredentialsCreator)
+
+#core = factory_registration("core", protocol=Core, singleton=False)
+#connection = factory_registration("connection", protocol=Connection | ConnectionBuilder)
 messagebus = factory_registration("messagebus", protocol=MessageBus)
-core = factory_registration("core")
-connection = factory_registration("connection", protocol=Connection)
-service = factory_registration("service", protocol=Service | RequiresServiceIdentity)
+
+agent_starter = factory_registration("agent_starter", protocol=AgentStarter)
+agent_executor = factory_registration("agent_executor", protocol=AgentExecutor)
+agent_builder = factory_registration("agent_builder", protocol=AgentBuilder)
+
 authservice = factory_registration("authservice", protocol=AuthService)
+
 authorizer = factory_registration("authorizer", protocol=Authorizer)
 authenticator = factory_registration("authenticator", protocol=Authenticator)
 authorization_manager = factory_registration("authorization_manager", protocol=AuthorizationManager)
-credentials_store = factory_registration("credentials_store", protocol=CredentialsStore)
-credentials_manager = factory_registration("credentials_manager", protocol=CredentialsManager)
+
 auth_create_hook = factory_registration("auth_create_hook")
 auth_add_hook = factory_registration("auth_add_hook")
 auth_remove_hook = factory_registration("auth_remove_hook")
@@ -105,7 +146,7 @@ def __get_create_instance_from_factory__(*, instances, registration, name: str =
 
 def __get_class_from_factory__(registration, name: str = None):
     if not registration.registry:
-        raise ValueError(f"No {registration.name} is currently registered")
+        raise ValueError(f"No {name} is currently registered")
 
     if name is None and len(registration.registry) > 1:
         raise ValueError(f"Can't figure out which messagebus to return.")
@@ -168,7 +209,7 @@ def get_messagebus_class(name: str = None) -> type:
 
 
 @logtrace
-def get_messagebus_core_class(name=None) -> type:
+def get_core_instance(credentials: Credentials) -> Core:
     """
     Return a registered core class.
 
@@ -179,7 +220,11 @@ def get_messagebus_core_class(name=None) -> type:
     :raises ValueError: If no core class is registered or if the passed name doesn't
         exist in the registry
     """
-    return __get_class_from_factory__(messagebus, name)
+    registerd_cls = __get_class_from_factory__(core)
+    service_repo.add_instance(Credentials, credentials)
+
+    return service_repo.resolve(registerd_cls)
+    #return __get_class_from_factory__(core, name)
 
 
 __authorizer__: dict[str, Authorizer] = {}
@@ -211,20 +256,20 @@ __authenticator__: dict[str, Authenticator] = {}
 
 
 @logtrace
-def get_authenticator(name: str = None, credentials_manager: CredentialsManager = None) -> Authenticator:
+def get_authenticator(name: str = None, credentials_creator: CredentialsCreator = None) -> Authenticator:
     authenticatoritem: Authenticator = None
     if name is not None:
         authenticatoritem = __authenticator__.get(name, None)
-    if credentials_manager is None:
-        credentials_manager = get_credentials_manager()
+    if credentials_creator is None:
+        credentials_creator = get_credentials_creator()
 
-    assert isinstance(credentials_manager, CredentialsManager)
+    assert isinstance(credentials_creator, CredentialsCreator)
 
     if authenticatoritem is None:
         authenticatoritem = __get_create_instance_from_factory__(instances=__authenticator__,
                                                                  registration=authenticator,
                                                                  name=name,
-                                                                 credentials_manager=credentials_manager)
+                                                                 credentials_creator=credentials_creator)
         if authenticatoritem is not None:
             __authenticator__[name] = authenticatoritem
     return authenticatoritem
@@ -269,21 +314,21 @@ def get_authservice_class(name=None) -> type:
     return __get_class_from_factory__(authservice, name)
 
 
-__credentials_manager__: dict[str, CredentialsManager] = {}
+__credentials_creator__: dict[str, CredentialsCreator] = {}
 
 
 @logtrace
-def get_credentials_manager(name=None) -> CredentialsManager:
+def get_credentials_creator(name=None) -> CredentialsCreator:
 
-    creator_item: CredentialsManager = None
+    creator_item: CredentialsCreator = None
     if name is not None:
-        creator_item = __credentials_manager__.get(name, None)
+        creator_item = __credentials_creator__.get(name, None)
     if creator_item is None:
-        creator_item = __get_create_instance_from_factory__(instances=__credentials_manager__,
-                                                            registration=credentials_manager,
+        creator_item = __get_create_instance_from_factory__(instances=__credentials_creator__,
+                                                            registration=credentials_creator,
                                                             name=name)
         if creator_item is not None:
-            __credentials_manager__[name] = creator_item
+            __credentials_creator__[name] = creator_item
     return creator_item
 
 

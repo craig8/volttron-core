@@ -30,20 +30,18 @@ from typing import List
 
 import yaml
 
-from volttron.utils.commands import (is_volttron_running, execute_command, isapipe, wait_for_volttron_startup,
-                                     wait_for_volttron_shutdown, vip_main)
+from volttron.utils.commands import (execute_command, is_volttron_running, isapipe, vip_main,
+                                     wait_for_volttron_shutdown, wait_for_volttron_startup)
 from volttron.utils.context import ClientContext
-from volttron.utils.commands import wait_for_volttron_startup, wait_for_volttron_shutdown
-from volttron.utils.dynamic_helper import get_module, get_class, get_subclasses
+from volttron.utils.dynamic_helper import get_class, get_module, get_subclasses
 from volttron.utils.file_access import create_file_if_missing
-from volttron.utils.identities import normalize_identity, is_valid_identity
-from volttron.utils.jsonapi import strip_comments, parse_json_config
-from volttron.utils.logs import setup_logging, log_to_file
+from volttron.utils.identities import is_valid_identity, normalize_identity
+from volttron.utils.jsonapi import parse_json_config, strip_comments
+from volttron.utils.logs import log_to_file, logtrace, setup_logging
 from volttron.utils.messagebus import store_message_bus_config
-from volttron.utils.time import (format_timestamp, process_timestamp, parse_timestamp_string,
-                                 get_utc_seconds_from_epoch, get_aware_utc_now, fix_sqlite3_datetime)
+from volttron.utils.time import (fix_sqlite3_datetime, format_timestamp, get_aware_utc_now, get_utc_seconds_from_epoch,
+                                 parse_timestamp_string, process_timestamp)
 from volttron.utils.version import get_version
-from volttron.utils.logs import logtrace
 
 _log = logging.getLogger(__name__)
 
@@ -84,6 +82,6 @@ __all__: List[str] = [
     "create_file_if_missing", "wait_for_volttron_shutdown", "process_timestamp", "parse_timestamp_string",
     "execute_command", "get_version", "get_aware_utc_now", "get_utc_seconds_from_epoch", "get_address",
     "deserialize_frames", "wait_for_volttron_startup", "normalize_identity", "ClientContext", "format_timestamp",
-    "store_message_bus_config", "is_ip_private", "fix_sqlite3_datetime", "vip_main", "get_module", "get_class",
-    "get_subclasses", "logtrace"
+    "store_message_bus_config", "fix_sqlite3_datetime", "vip_main", "get_module", "get_class", "get_subclasses",
+    "logtrace"
 ]

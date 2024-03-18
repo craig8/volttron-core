@@ -1,8 +1,9 @@
-from .auth_credentials import (Credentials, CredentialsStore, CredentialStoreError, IdentityAlreadyExists,
-                               IdentityNotFound, InvalidCredentials, PKICredentials)
-from .auth_service import (AuthenticatorProtocol, AuthorizerProtocol, AuthServiceProtocol)
+from .auth_credentials import (Credentials, PublicCredentials, PKICredentials, CredentialsStore, CredentialStoreError,
+                               IdentityAlreadyExists, IdentityNotFound, InvalidCredentials, CredentialsCreator)
+from .auth_service import (Authenticator, Authorizer, AuthService, AuthorizationManager)
 
 __all__: list[str] = [
-    "Credentials", "PKICredentials", "CredentialStoreError", "InvalidCredentials", "IdentityAlreadyExists",
-    "IdentityNotFound", "CredentialsStore", "AuthServiceProtocol", "AuthorizerProtocol", "AuthenticatorProtocol"
+    "Credentials", "PublicCredentials", "PKICredentials", "CredentialStoreError", "InvalidCredentials",
+    "IdentityAlreadyExists", "IdentityNotFound", "CredentialsStoreProtocol", "AuthServiceProtocol", "Authorizer",
+    "Authenticator", "CredentialsCreator", "AuthorizationManager"
 ]

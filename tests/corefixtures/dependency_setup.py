@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 from volttron.client.vip.agent import Agent, Core
 #from volttron.decorators import core, agent_starter, factory
-from volttron.decorators import core_builder, connection_builder, agent_starter
+from volttron.decorators import agent_starter, connection_builder, core_builder
 from volttron.server.containers import Frozen
 from volttron.types.auth.auth_credentials import Credentials
+from volttron.types.bases import (AgentStarter, Connection, ConnectionFactory, CoreLoop)
 from volttron.types.message import Message
-from volttron.types.protocols import AgentStarter, ConnectionFactory, Connection, CoreLoop
 from volttron.utils.context import EnvironmentalContext
 
 

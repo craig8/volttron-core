@@ -22,35 +22,42 @@
 # ===----------------------------------------------------------------------===
 # }}}
 
-from typing import Dict, Any
+from pathlib import Path
+from typing import Any, Dict, TypeVar
 
 import gevent
 from gevent import Greenlet
 
-from volttron.client.vip.agent import Agent
+strpath = str | Path
+
+Identity = str
+
+from volttron.types.agent_context import AgentContext, AgentOptions
+from volttron.types.message import Message
 from volttron.types.server_config import ServerConfig
 
+# class ServiceInterface(Agent):
 
-class ServiceInterface(Agent):
+#     def __init__(self, server_config: ServerConfig = None, **kwargs):
+#         self._server_config = server_config
+#         super().__init__(**kwargs)
 
-    def __init__(self, server_config: ServerConfig = None, **kwargs):
-        self._server_config = server_config
-        super().__init__(**kwargs)
+#     @classmethod
+#     def get_kwargs_defaults(cls) -> Dict[str, Any]:
+#         """
+#         Class method that allows the specific class to have the ability to specify
+#         what service arguments are available as defaults.
+#         """
+#         return {}
 
-    @classmethod
-    def get_kwargs_defaults(cls) -> Dict[str, Any]:
-        """
-        Class method that allows the specific class to have the ability to specify
-        what service arguments are available as defaults.
-        """
-        return {}
+#     def spawn_in_greenlet(self) -> Greenlet:
+#         """
+#         Start the execution of a volttron agent.
+#         """
+#         event = gevent.event.Event()
+#         task = gevent.spawn(self.core.run, event)
+#         event.wait()
+#         del event
+#         return task
 
-    def spawn_in_greenlet(self) -> Greenlet:
-        """
-        Start the execution of a volttron agent.
-        """
-        event = gevent.event.Event()
-        task = gevent.spawn(self.core.run, event)
-        event.wait()
-        del event
-        return task
+__all__: list[str] = ["Message", "ServerConfig", "strpath", "AgentOptions", "AgentContext"]

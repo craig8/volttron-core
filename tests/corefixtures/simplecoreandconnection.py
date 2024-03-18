@@ -1,12 +1,14 @@
-import gevent
 import logging
+
+import gevent
+
 from volttron.client.vip.agent import Agent
 from volttron.client.vip.agent.core import Core
+from volttron.decorators import connection_builder, core_builder
 from volttron.types.auth.auth_credentials import Credentials
+from volttron.types.bases import Connection, CoreLoop
 from volttron.types.factories import ConnectionBuilder
 from volttron.types.message import Message
-from volttron.types.protocols import Connection, CoreLoop
-from volttron.decorators import core_builder, connection_builder
 
 _log = logging.getLogger(__name__)
 

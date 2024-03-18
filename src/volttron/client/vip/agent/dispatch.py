@@ -22,7 +22,10 @@
 # ===----------------------------------------------------------------------===
 # }}}
 
+import logging
 import weakref
+
+_log = logging.getLogger(__name__)
 
 __all__ = ["Signal"]
 
@@ -33,16 +36,19 @@ class Signal(object):
         self._receivers = weakref.WeakValueDictionary()
 
     def connect(self, receiver, owner=None):
+        _log.debug(f"Connecting receiver {receiver} with owner {owner}")
         self._receivers[receiver] = receiver if owner is None else owner
 
     def disconnect(self, receiver):
         try:
+            _log.debug(f"Disconnecting receiver {receiver}")
             self._receivers.pop(receiver)
             return True
         except KeyError:
             return False
 
     def send(self, sender, **kwargs):
+        _log.debug(f"Sending signal from {sender} with kwargs {kwargs}")
         return [receiver(sender, **kwargs) for receiver in self._receivers]
 
     def sendby(self, executor, sender, **kwargs):
