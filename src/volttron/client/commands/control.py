@@ -120,7 +120,7 @@ class AgentMeta:
                 return f"{self.name} {self.uuid} {self.identity} {self.agent_user} {self.tag}"
 
     def __str__(self):
-        return f"{self.name} {self.tag} {self.uuid} {self.vip_identity} {self.agent_user}"
+        return f"{self.name} {self.tag} {self.uuid} {self.identity} {self.agent_user}"
 
 
 def expandall(string):
@@ -631,13 +631,14 @@ def status_agents(opts):
             agent_user = ""
         try:
             agent = all_agents[uuid]
-            all_agents[uuid] = agent._replace(agent_user=agent_user)
+            print(f"Agent user is {agent_user}")
+            print(f"agent is {agent}")
+            all_agents[uuid] = agent
         except KeyError:
-            all_agents[uuid] = agent = AgentMeta(name,
-                                                 None,
-                                                 uuid,
-                                                 vip_identity=identity,
-                                                 agent_user=agent_user)
+            all_agents[uuid] = AgentMeta(name=name,
+                                         uuid=uuid,
+                                         identity=identity,
+                                         agent_user=agent_user)
         status[uuid] = stat
     all_agents = list(all_agents.values())
 
